@@ -4,14 +4,16 @@ import AppData exposing (..)
 import Browser
 import Browser.Dom exposing (Viewport, getViewport, getViewportOf)
 import Browser.Events exposing (onResize)
-import Browser.Navigation as Navigation exposing (Key)
+import Browser.Navigation as Navigation exposing (Key, load)
 import Constants exposing (mobileBreakpoint)
-import Html exposing (Html, a, div, img, span, text)
-import Html.Attributes exposing (class, href, id, src, style)
-import Html.Events.Extra exposing (onClickPreventDefault)
+import Html exposing (Html, a, br, div, img, span, text)
+import Html.Attributes exposing (class, href, id, property, src, style)
+import Html.Events.Extra exposing (onClickPreventDefault, onClickPreventDefaultAndStopPropagation)
 import Html.Events.Extra.Pointer as Pointer
+import Html.Keyed exposing (node)
 import Http exposing (expectJson, get)
-import Icons
+import Icons exposing (instagram, logo, minus, plus)
+import Json.Encode as Json
 import List.Extra exposing (find, getAt)
 import Message exposing (Msg(..))
 import Page exposing (ActiveItemContentData, GalleryContentData(..), GalleryContentDataType, GalleryImageContentDataType, GalleryPageData, InfoPageData, ItemContentData, ListPageData, MenuData(..), MenuSectionData, MenuSectionType(..), MenuTagData, MobileGalleryContentDataType, Page(..), StartPageData, calculateTopOffset, findItemIndex, findSection, findTag, generateGalleryContentData, generateGalleryItemContentData, generateInfoContentData, generateInfoMenuData, generateMobileGalleryItemContentData, generateMobileGalleryMenuData, generateMobileMenuData, generateRootMenuData, generateSectionMenuData, getGalleryWithTagsSectionData)
@@ -21,8 +23,12 @@ import Task
 import Url exposing (Url)
 
 
-imgPath =
-    "/img/"
+etsyLink =
+    "https://www.etsy.com/shop/palavara/"
+
+
+instagramLink =
+    "https://www.instagram.com/palavara_ceramics/"
 
 
 type alias Flags =
@@ -54,7 +60,7 @@ type alias InProgressModelData =
 
 type alias InitModelData =
     { url : Url
-    , dataUrl: String
+    , dataUrl : String
     , key : Navigation.Key
     , data : Maybe AppData
     , viewport : Maybe Viewport
@@ -79,8 +85,6 @@ update message model =
                 SetData result ->
                     case result of
                         Err err ->
-                            let _ = Debug.log "err" err
-                            in
                             ( InitErrorModel err, Cmd.none )
 
                         Ok data ->
@@ -129,7 +133,7 @@ update message model =
                 GoToRoute route ->
                     case readyModelData.viewport.viewport.width <= mobileBreakpoint of
                         True ->
-                            generateMobilePageData readyModelData (readyModelData.viewport.viewport.height - 41) route
+                            generateMobilePageData readyModelData readyModelData.viewport.scene.height route
 
                         False ->
                             generatePageData readyModelData route
@@ -238,6 +242,12 @@ update message model =
                         _ ->
                             ( ReadyModel readyModelData, Cmd.none )
 
+                GoToShop ->
+                    ( model, load etsyLink )
+
+                GoToInstagram ->
+                    ( model, load instagramLink )
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -296,9 +306,9 @@ generatePageData modelData activeRoute =
                     generateGalleryContentData modelData.apiUrl (SectionImageRoute activeSectionId) items
                         |> GalleryContentData
                         |> Page.GalleryPageData
-                            (generateSectionMenuData activeSectionId modelData.data)
+                            (generateSectionMenuData activeSectionId Nothing modelData.data)
                         |> GalleryPage
-                        |> (\page -> ( ReadyModel <| ReadyModelData modelData.viewport modelData.key modelData.apiUrl  activeRoute page modelData.data, Navigation.pushUrl modelData.key <| routeToUrlPath activeRoute ))
+                        |> (\page -> ( ReadyModel <| ReadyModelData modelData.viewport modelData.key modelData.apiUrl activeRoute page modelData.data, Navigation.pushUrl modelData.key <| routeToUrlPath activeRoute ))
 
                 Nothing ->
                     ( ReadyModel modelData, Navigation.pushUrl modelData.key <| routeToUrlPath Root )
@@ -315,17 +325,17 @@ generatePageData modelData activeRoute =
                         |> Maybe.andThen (\items -> find (\item -> item.itemId == itemId) items)
 
                 maybeRouteAndBla =
-                   Maybe.map2
-                      (\items activeItem -> (items, activeItem)) maybeItems maybeActiveItem
-
-
+                    Maybe.map2
+                        (\items activeItem -> ( items, activeItem ))
+                        maybeItems
+                        maybeActiveItem
             in
             case maybeRouteAndBla of
-                Just (items, activeItem) ->
+                Just ( items, activeItem ) ->
                     generateGalleryItemContentData modelData.apiUrl (SectionImageRoute activeSectionId) activeItem items
                         |> GalleryImageContentData
                         |> Page.GalleryPageData
-                            (generateSectionMenuData activeSectionId modelData.data)
+                            (generateSectionMenuData activeSectionId Nothing modelData.data)
                         |> GalleryPage
                         |> (\page -> ( ReadyModel { modelData | route = activeRoute, page = page }, Navigation.pushUrl modelData.key <| routeToUrlPath activeRoute ))
 
@@ -344,7 +354,7 @@ generatePageData modelData activeRoute =
                     generateGalleryContentData modelData.apiUrl (TagImageRoute activeSectionId activeTagId) items
                         |> GalleryContentData
                         |> Page.GalleryPageData
-                            (generateSectionMenuData activeSectionId modelData.data)
+                            (generateSectionMenuData activeSectionId (Just activeTagId) modelData.data)
                         |> GalleryPage
                         |> (\page -> ( ReadyModel { modelData | route = activeRoute, page = page }, Navigation.pushUrl modelData.key <| routeToUrlPath activeRoute ))
 
@@ -362,16 +372,18 @@ generatePageData modelData activeRoute =
                     maybeItems
                         |> Maybe.andThen (\items -> find (\item -> item.itemId == itemId) items)
 
-                maybeRouteAndBla =
-                   Maybe.map2
-                      (\items activeItem -> (items, activeItem)) maybeItems maybeActiveItem
+                maybeItemsAndActiveItem =
+                    Maybe.map2
+                        (\items activeItem -> ( items, activeItem ))
+                        maybeItems
+                        maybeActiveItem
             in
-            case maybeRouteAndBla of
-                Just (items, activeItem) ->
+            case maybeItemsAndActiveItem of
+                Just ( items, activeItem ) ->
                     generateGalleryItemContentData modelData.apiUrl (TagImageRoute activeSectionId activeTagId) activeItem items
                         |> GalleryImageContentData
                         |> Page.GalleryPageData
-                            (generateSectionMenuData activeSectionId modelData.data)
+                            (generateSectionMenuData activeSectionId (Just activeTagId) modelData.data)
                         |> GalleryPage
                         |> (\page -> ( ReadyModel { modelData | route = activeRoute, page = page }, Navigation.pushUrl modelData.key <| routeToUrlPath activeRoute ))
 
@@ -532,7 +544,8 @@ generateMobilePageData modelData sliderHeight activeRoute =
                 Nothing ->
                     ( ReadyModel modelData, Navigation.pushUrl modelData.key <| routeToUrlPath Root )
 
-updateRoute: Route -> ItemId -> Route
+
+updateRoute : Route -> ItemId -> Route
 updateRoute oldRoute newItemId =
     case oldRoute of
         SectionRoute _ ->
@@ -550,7 +563,8 @@ updateRoute oldRoute newItemId =
         _ ->
             oldRoute
 
-calculateSliderTopOffset: (Float,Float) -> Float -> Float -> Float
+
+calculateSliderTopOffset : ( Float, Float ) -> Float -> Float -> Float
 calculateSliderTopOffset pointerStart topOffset yCoordinate =
     let
         ( initialPointerStart, oldTopOffset ) =
@@ -603,7 +617,7 @@ allFieldsPresent newModel =
                         route =
                             parseToRoute url appData vp
                     in
-                    ( route, { data = appData, apiUrl = urlString,viewport = vp, key = key, route = route, page = InitialPage } )
+                    ( route, { data = appData, apiUrl = urlString, viewport = vp, key = key, route = route, page = InitialPage } )
                 )
                 data.data
                 data.viewport
@@ -632,12 +646,13 @@ main =
 
 init : Flags -> Url.Url -> Navigation.Key -> ( Model, Cmd Msg )
 init { apiBaseUrl, dataPath, imagePath, apiPort, apiProtocol } url key =
-    let baseUrl =
-          apiProtocol
-            ++ "://"
-            ++ apiBaseUrl
-            ++ apiPort
-            ++ "/"
+    let
+        baseUrl =
+            apiProtocol
+                ++ "://"
+                ++ apiBaseUrl
+                ++ apiPort
+                ++ "/"
     in
     ( InitModel (InitModelData url (baseUrl ++ imagePath ++ "/") key Nothing Nothing)
     , Cmd.batch
@@ -719,7 +734,14 @@ infoPage data =
                 , div [ class "info-wrapper" ]
                     [ div [ class "info-image" ]
                         [ img [ src infoContentData.urlString ] [] ]
-                    , div [ class "info-text" ] [ text infoContentData.text ]
+                    , div [ class "info-text" ] [
+                        text infoContentData.text
+                        , br [] []
+                        , br [] []
+                        , text "Visit my shop at Etsy"
+                        , br [] []
+                        , a [href etsyLink] [ text etsyLink]
+                    ]
                     ]
                 ]
             ]
@@ -763,9 +785,11 @@ galleryPage data =
                 )
             ]
 
-buildPictures: { x | items:  List ItemContentData} -> Html Msg
+
+buildPictures : { x | items : List ItemContentData } -> Html Msg
 buildPictures contentData =
-    div
+    node
+        "div"
         [ class "image-group" ]
         (List.map
             (\itemData ->
@@ -779,7 +803,8 @@ buildPictures contentData =
             contentData.items
         )
 
-buildActiveImage: ActiveItemContentData -> Html Msg
+
+buildActiveImage : ActiveItemContentData -> Html Msg
 buildActiveImage activeImageData =
     let
         prevAttributes =
@@ -799,12 +824,13 @@ buildActiveImage activeImageData =
                     [ class "next", onClickPreventDefault msg ]
     in
     div [ class "main-image on" ]
-        [ div prevAttributes [ text "<" ]
+        [ div prevAttributes [ minus ]
         , img [ src activeImageData.urlString ] []
-        , div nextAttributes [ text ">" ]
+        , div nextAttributes [ plus ]
         ]
 
-buildMobilePictures: MobileGalleryContentDataType -> Html Msg
+
+buildMobilePictures : MobileGalleryContentDataType -> Html Msg
 buildMobilePictures contentData =
     div
         [ class "slider-window"
@@ -816,7 +842,8 @@ buildMobilePictures contentData =
         , Pointer.onCancel (relativePos >> UpMsg)
         , Html.Attributes.style "touch-action" "none"
         ]
-        [ div
+        [ node
+            "div"
             [ class "image-group"
             , style "top" (String.fromFloat contentData.topOffset ++ "px")
             , id "image-group"
@@ -834,9 +861,11 @@ buildMobilePictures contentData =
             )
         ]
 
-buildSectionPicture: String -> Msg -> Bool -> ItemId -> Html Msg
+
+buildSectionPicture : String -> Msg -> Bool -> ItemId -> ( String, Html Msg )
 buildSectionPicture urlString onClickMessage isActive itemId =
-    a
+    ( itemId
+    , a
         [ id itemId
         , class
             (if isActive then
@@ -849,52 +878,62 @@ buildSectionPicture urlString onClickMessage isActive itemId =
         ]
         [ img [ src urlString ] []
         ]
+    )
 
 
 buildMenu : MenuData -> Html Msg
 buildMenu menuData =
     case menuData of
         MenuData { menuSectionData } ->
-            div [ class "menu-wrapper" ]
+            div [ class "menu-wrapper", id "menu-wrapper" ]
                 [ div [ class "menu-background" ] [ div [ class "menu-background-inner" ] [] ]
                 , div [ class "menu" ] (List.append (buildEntries menuSectionData) [ buildLogo ])
                 ]
 
         MenuInfoData { menuSectionData } ->
-            div [ class "menu-wrapper" ]
+            div [ class "menu-wrapper", id "menu-wrapper" ]
                 [ div [ class "menu-background" ] [ div [ class "menu-background-inner" ] [] ]
-                , div [ class "menu" ] (List.append (buildEntries menuSectionData) [ ])
+                , div [ class "menu" ] (List.append (buildEntries menuSectionData) [])
                 ]
 
         MobileMenuData { menuSectionData } ->
-            div [ class "menu-wrapper" ]
+            div [ class "menu-wrapper", id "menu-wrapper mobile" ]
                 [ div [ class "menu-background" ] [ div [ class "menu-background-inner" ] [] ]
-                , div [ class "menu" ] (buildEntries menuSectionData)
+                , div [ class "menu" ]
+                    (List.concat
+                        [ buildMobileEntries menuSectionData
+                        , [ a [ class "instagram", onClickPreventDefaultAndStopPropagation GoToInstagram, href instagramLink ] [ instagram ] ]
+                        ]
+                    )
                 ]
 
         MobileTogglingMenuData { menuSectionData, menuOpen } ->
             case menuOpen of
                 True ->
-                    div [ class "menu-wrapper" ]
+                    div [ class "menu-wrapper", id "menu-wrapper mobile" ]
                         [ div [ class "menu-background" ] [ div [ class "menu-background-inner" ] [] ]
                         , div [ class "menu" ]
-                            (List.append
-                                [ buildLogo
-                                , div [ class "menu-line" ] []
+                            (List.concat
+                                [ [ buildLogo
+                                  , div [ class "menu-line" ] []
+                                  ]
+                                , List.map (\sectionData -> buildMobileEntry sectionData) menuSectionData
+                                , [ a [ class "instagram", onClickPreventDefaultAndStopPropagation GoToInstagram, href instagramLink ] [ instagram ] ]
                                 ]
-                                (List.map (\sectionData -> buildEntry sectionData) menuSectionData)
                             )
                         ]
 
                 False ->
-                    div [ class "menu-wrapper" ]
+                    div [ class "menu-wrapper", id "menu-wrapper mobile" ]
                         [ div [ class "menu-background closed" ] [ div [ class "menu-background-inner" ] [] ]
                         , div [ class "menu closed", onClickPreventDefault OpenMenu ]
-                            (List.append
-                                [ buildLogo
-                                , div [ class "menu-line" ] []
+                            (List.concat
+                                [ [ buildLogo
+                                  , div [ class "menu-line" ] []
+                                  ]
+                                , List.map (\sectionData -> buildMobileEntry sectionData) menuSectionData
+                                , [ a [ class "instagram", onClickPreventDefaultAndStopPropagation GoToInstagram, href instagramLink ] [ instagram ] ]
                                 ]
-                                (List.map (\sectionData -> buildEntry sectionData) menuSectionData)
                             )
                         ]
 
@@ -907,10 +946,17 @@ buildEntries menuData =
         ]
         (List.map (\sectionData -> buildEntry sectionData) menuData)
 
+buildMobileEntries : List MenuSectionData -> List (Html Msg)
+buildMobileEntries menuData =
+    List.append
+        [ div [ class "logo-label" ] [ text "Varvara Polyakova" ]
+        , div [ class "menu-line" ] []
+        ]
+        (List.map (\sectionData -> buildMobileEntry sectionData) menuData)
 
 buildLogo : Html Msg
 buildLogo =
-    div [ class "logo", onClickPreventDefault <| GoToRoute Root ] [ Icons.logo ]
+    div [ class "logo", onClickPreventDefault <| GoToRoute Root ] [ logo ]
 
 
 buildEntry : MenuSectionData -> Html Msg
@@ -923,20 +969,42 @@ buildEntry sectionData =
             buildGalleryWithTagsEntry sectionData
 
 
+buildMobileEntry : MenuSectionData -> Html Msg
+buildMobileEntry sectionData =
+    case sectionData.sectionType of
+        Info ->
+            buildMobileInfoEntry sectionData
+
+        _ ->
+            buildGalleryWithTagsEntry sectionData
+
+
 buildInfoEntry : MenuSectionData -> Html Msg
 buildInfoEntry sectionData =
     div [ class "menu-entry info" ]
-        [ a [ class "menu-entry-label", onClickPreventDefault sectionData.onClickMessage, href sectionData.urlString ] [ text sectionData.sectionLabel ] ]
+        [ a [ class "menu-entry-label", onClickPreventDefault sectionData.onClickMessage, href sectionData.urlString ] [ text sectionData.sectionLabel ]
+        , span [ class "info-pipe" ] [ text "|" ]
+        , a [ class "menu-entry-label", onClickPreventDefaultAndStopPropagation GoToShop, href etsyLink ] [ text "shop" ]
+        , span [ class "info-pipe" ] [ text "|" ]
+        , a [ class "instagram", onClickPreventDefaultAndStopPropagation GoToInstagram, href instagramLink ] [ instagram ]
+        ]
 
+buildMobileInfoEntry : MenuSectionData -> Html Msg
+buildMobileInfoEntry sectionData =
+    div [ class "menu-entry info" ]
+        [ a [ class "menu-entry-label", onClickPreventDefault sectionData.onClickMessage, href sectionData.urlString ] [ text sectionData.sectionLabel ]
+        , span [ class "info-pipe" ] [ text "|" ]
+        , a [ class "menu-entry-label", onClickPreventDefaultAndStopPropagation GoToShop, href etsyLink ] [ text "shop" ]
+        ]
 
 buildGalleryWithTagsEntry : MenuSectionData -> Html Msg
 buildGalleryWithTagsEntry sectionData =
     div [ class "menu-entry" ]
         [ div
             [ class
-                ("menu-entry-label "
+                ("menu-entry-label"
                     ++ (if sectionData.sectionIsActive == True then
-                            "active"
+                            " active"
 
                         else
                             ""
@@ -954,10 +1022,9 @@ buildTags tagDataList =
         |> List.intersperse
             (span [ class "pipe" ]
                 [ text "|"
-
                 ]
             )
-            |> List.intersperse (text " \u{00A0}")
+        |> List.intersperse (text "\u{00A0}")
 
 
 buildTag : MenuTagData -> Html Msg
@@ -979,6 +1046,8 @@ buildTag tagData =
 relativePos : Pointer.Event -> ( Float, Float )
 relativePos event =
     event.pointer.offsetPos
+
+
 
 --
 --debugLog s x =
