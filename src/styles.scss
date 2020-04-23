@@ -53,7 +53,6 @@ body {
   padding: 0;
   width: 100%;
   background-color: $color-canvas;
-  font-family: 'Brutal Type', sans-serif;
 }
 
 html {
@@ -62,7 +61,8 @@ html {
 }
 
 body {
-  min-height: 100vh;
+  height: 100vh;
+  padding: 2rem;
 }
 
 .loader {
@@ -100,630 +100,54 @@ body {
   }
 }
 
-.menu-wrapper {
-  position: absolute;
-  z-index: 1;
-  grid-column: 1;
-  grid-row: 1;
-  width: 100%;
-  padding: 0 $margin-small;
-
-  @media screen and (min-width: 1024px) {
-    position: relative;
-    grid-column: 1 /span 2;
-    padding: 0 $margin-small 0 $margin-small;
-    width: 100%;
-  }
-}
-
-.menu-background {
-  position: absolute;
-  top: 0;
-  left: 0;
-
-  background-color: transparent;
-  height: 100%;
-  width: $menu-width-mobile;
-
-  margin: 0 0 0 $margin-small;
-  transition-property: height;
-  transition-duration: 0.5s;
-
-  @media screen and (min-width: 1024px) {
-    width: $menu-width-desktop;
-    padding: 2.7rem 0 0 0;
-  }
-
-  &.closed {
-    height: calc(#{$margin} + #{$margin} + 1.5rem);
-  }
-
-  .menu-background-inner {
-    height: 100%;
-    width: 100%;
-
-    background-color: $color-yellow;
-  }
-}
-
-.menu {
-  position: sticky;
-  display: grid;
-  grid-template: calc(#{$margin} + #{$logo-label-height}) #{$menu-inner-margin} 1fr / #{$menu-width-mobile} 1fr;
-  grid-auto-flow: row;
-  height: auto;
-  align-items: start;
-  justify-items: start;
-  padding: $margin 0 0 0;
-  align-self: start;
-  margin: 0;
-  z-index: 2;
-  background-color: transparent;
-
-  @media screen and (min-width: 1024px) {
-    grid-template: 1fr 0.53px auto/#{$menu-width-desktop} 1fr;
-    padding: 2.7rem 0 0 0;
-  }
-
-  &.closed {
-    .menu-entry {
-      display: none;
-    }
-
-    .menu-entry.info {
-      display: flex;
-    }
-  }
-
-  .logo-label {
-    font-size: $logo-label-height;
-    font-weight: bold;
-    line-height: 1;
-    margin-left: $margin;
-    align-self: flex-end;
-  }
-
-  .logo {
-    grid-column: 1;
-    grid-row: 1 / span 3;
-    justify-self: flex-start;
-    margin-left: 2rem;
-
-    display: flex;
-    justify-content: center;
-    align-items: center;
-
-    width: 4.4rem;
-    height: 4.4rem;
-
-    border: 1px solid #000045;
-    border-radius: 2.2rem;
-
-    @media screen and (min-width: 1024px) {
-      grid-column: 2;
-      grid-row: 3 /span 3;
-      justify-self: flex-end;
-      margin-top: 1rem;
-      align-self: flex-start;
-
-    }
-
-    svg {
-      height: 3.2rem;
-      width: 3.2rem;
-      fill: $color-blue;
-    }
-  }
-
-  .instagram {
-    grid-column: 2;
-    grid-row: 2;
-    align-self: flex-start;
-    justify-self: flex-end;
-    margin-top: 0.5rem;
-    width: 1.7rem;
-    height: 1.7rem;
-
-    svg {
-      stroke: $color-blue;
-      stroke-width: 3px;
-      fill: transparent;
-    }
-
-    @media screen and (min-width: 1024px) {
-      width: 1.4rem;
-      height: 1.4rem;
-      margin: 0 0 3px 0;
-      align-self: flex-end;
-    }
-  }
-
-  .menu-line {
-    height: 1px;
-    width: calc(100% - #{$margin});
-    background-color: $color-blue;
-    grid-column: 2;
-    grid-row: 2;
-    margin-left: $margin;
-
-    @media screen and (min-width: 1024px) {
-      grid-column: span 2;
-      grid-row: 2;
-    }
-  }
-
-  .menu-entry {
-    grid-column: 1;
-    display: flex;
-    flex-flow: column;
-    width: 100%;
-  }
-
-  .menu-entry-label {
-    align-self: flex-start;
-
-    color: $color-gray;
-    font-size: $text-size;
-    font-weight: 400;
-    text-transform: uppercase;
-    margin: 1rem 0 0 0;
-
-    &.active {
-      text-decoration: underline;
-    }
-  }
-
-  .menu-entry-groups {
-    align-self: flex-start;
-    display: flex;
-    flex-flow: row wrap;
-    width: calc(100% - #{$margin});
-    margin-left: $margin;
-    line-height: 1;
-    font-size: $text-size;
-  }
-
-  .menu-entry-groups a {
-    align-self: flex-start;
-    display: block;
-    font-weight: 400;
-    font-size: $text-size;
-    color: $color-blue;
-    margin-top: 0.5rem;
-
-    &.active {
-      text-decoration: underline;
-    }
-  }
-
-  .menu-entry.info {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: flex-end;
-    align-self: flex-end;
-    align-items: flex-end;
-    padding: 0;
-
-    display: flex;
-    flex-flow: row;
-    justify-content: flex-end;
-
-  }
-
-  .menu-entry.info .menu-entry-label {
-
-    align-self: flex-end;
-    font-size: $text-size;
-    font-weight: 400;
-    margin: 0 0 3px 0;
-    line-height: 1;
-    padding: 0;
-    color: $color-blue;
-    text-transform: none;
-  }
-  .info-pipe {
-    margin:0 0.7rem 2px 0.7rem ;
-
-    @media screen and (min-width: 1024px) {
-      font-size: 1.4rem;
-    }
-
-  }
-}
-
-
-.pipe {
-  font-weight: 300;
-  font-size: $text-size;
-  margin: 0.5rem 0 0 0;
-  line-height: 1;
-}
-
-
-.start {
-  display: grid;
-  grid-template: auto 1fr/1fr;
-  width: 100vw;
-  height: 100vh;
-  background-color: $color-yellow;
-
-  @media screen and (min-width: 1024px) {
-    grid-template: auto 1fr/ #{$menu-width-desktop} 1fr;
-    background-color: transparent;
-  }
-
-
-  .image-start {
-    grid-column: 1;
-    grid-row: 2;
-
-    height: 100%;
-    width: 100%;
-
-    background: center center url(#{$start-background-image}) no-repeat;
-    background-size: cover;
-
-    @media screen and (min-width: 1024px) {
-      grid-column: 2;
-    }
-
-  }
-
-  .menu-wrapper {
-    z-index: 0;
-    width: 100%;
-    background-color: $color-yellow;
-  }
-
-  .menu-background {
-    padding: $margin 0 calc(#{$margin} + .3rem) 0;
-
-    @media screen and (min-width: 1024px) {
-      padding: $margin 0 0 #{$margin-small};
-      margin: 0
-    }
-  }
-
-  .menu-background-inner {
-    background-color: white;
-
-    @media screen and (min-width: 1024px) {
-      background-color: transparent;
-    }
-  }
-
-  .menu {
-    position: sticky;
-    grid-template: calc(#{$margin} + #{$logo-label-height}) #{$menu-inner-margin} / #{$menu-width-mobile} 1fr;
-
-    padding-bottom: $margin;
-
-    @media screen and (min-width: 1024px) {
-      grid-template: 1fr 0.53px auto/#{$menu-width-desktop} 1fr;
-      padding-bottom: 0;
-    }
-
-    .menu-line {
-      grid-column: 1/span 2;
-    }
-  }
-}
-
 
 .layout {
   display: grid;
-  grid-template: auto 1fr / 1fr;
-  padding: 0;
-  position: relative;
-
-  width: 100vw;
-  height: 100vh;
-
-  @media screen and (min-width: 1024px) {
-    display: grid;
-    grid-template: auto 1fr / 1fr auto;
-    margin: 0;
-  }
-
-  .logo {
-    align-self: center;
-
-    @media screen and (min-width: 1024px) {
-      align-self: flex-start;
-    }
-  }
+  grid-template: 10rem 1fr 10rem / auto 1fr;
 }
 
-.slider-window {
-  display: grid;
-  height: calc(100vh);
-  justify-self: flex-end;
-  width: 100%;
-  overflow: hidden;
-
-  @media screen and (min-width: 1024px) {
-    grid-row: 2 / span 2;
-    grid-column: 1;
-
-
-    grid-template-rows: 70% auto;
-    grid-template-columns: 100%;
-    height: auto;
-    justify-self: initial;
-    width: 100%;
-    margin: 0;
-    overflow: hidden;
-    align-self: start;
-    padding: 5.2rem 2rem 5.2rem 0;
-  }
+.menu {
+  grid-row: 2;
+  grid-column: 1;
 }
 
-.image {
-  display: flex;
-  width: 100%;
-  min-height: 100%;
-  max-height: 100%;
-  justify-content: center;
-  padding: 0 1rem;
-
-  background-color: $color-canvas;
-  cursor: pointer;
-
-  opacity: 0;
-
-  transition-property: min-height, opacity;
-  transition-duration: 1s, 0.3s;
-
-  @media screen and (min-width: 1024px) {
-    display: flex;
-    width: 100%;
-    background-color: $color-canvas;
-    align-self: center;
-    justify-self: center;
-    padding: 0;
-    height: 18rem;
-    min-height: initial;
-  }
-
-  & img {
-    width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    margin-top: auto;
-    margin-bottom: 0;
-
-    @media screen and (min-width: 1024px) {
-      align-self: center;
-      justify-self: center;
-      margin: 0 auto;
-      width: 90%;
-      height: 100%;
-      max-height: 25rem;
-    }
-  }
-
-  &.active-image {
-    min-height: 1rem;
-    opacity: 1;
-
-    &.active-image img {
-      margin-top: 0;
-      margin-bottom: 0;
-    }
-  }
-
-  &.active-image + .image {
-    min-height: 100%;
-
-    img {
-      margin-top: 0;
-      margin-bottom: auto;
-    }
-
-    @media screen and (min-width: 1024px) {
-      min-height: initial;
-
-      img {
-        margin: 0;
-      }
-    }
-  }
-
-  .active-image-button {
-    @media screen and (min-width: 1024px) {
-      width: 100%;
-      height: 5rem;
-      stroke: #cccccc;
-    }
-
-    &.active {
-      @media screen and (min-width: 1024px) {
-        stroke: #000000;
-        cursor: pointer;
-      }
-    }
-  }
+.menu-section {
+  font-size: 2rem;
 }
 
-.image-group {
-  position: relative;
-  flex: 1 0 100%;
-  width: 100%;
-  display: grid;
-  grid-template: var(--image-height)/100%;
-  grid-auto-rows: var(--image-height);
-  grid-auto-flow: row;
-  grid-row-gap: 2rem;
-  align-items: center;
-  justify-items: center;
-  transition: top 0.2s ease 0s;
-
-  &:active {
-    .image {
-      opacity: 1;
-    }
-  }
-
-  @media screen and (min-width: 1024px) {
-    grid-row: 2;
-    position: initial;
-    width: 100%;
-    display: grid;
-    grid-template: 15rem / repeat(auto-fill,minmax(8vw, 1fr));
-    grid-auto-rows: 15rem;
-    grid-auto-columns: 10vw;
-    grid-auto-flow: dense;
-    grid-column-gap: 1vw;
-    grid-row-gap: 1vw;
-    overflow: auto;
-
-    padding: $margin;
-    .image {
-      opacity: 1;
-      transition: none;
-    }
-  }
-}
-
-.main-image {
-  grid-row: 1 / span 2;
+.section {
+  grid-row: 2;
   grid-column: 2;
+}
 
+.items {
   display: grid;
-  grid-template: 1fr /7% 1fr 7% ;
-  justify-items: center;
-  align-items: center;
-  height: 100vh;
-  padding: $margin $margin-small;
+  grid-template: 5rem/5rem;
+  grid-auto-columns: 5rem;
+  grid-auto-flow: column;
 
-  background-color: $color-light-gray;
-  transition: width .5s ease 0s,padding .5s ease 0s;
 
-  &.off {
-    width: 0;
-    padding:0;
-  }
+}
 
-  &.on {
-    width: calc(100vw - #{$menu-width-desktop} - 2* #{$margin-small});
-  }
+.item {
+  width:100%;
+  height: 100%;
 
-  & img {
-    max-width: 100%;
-    max-height: 80%;
-    object-fit: contain;
-  }
 
-  & .prev,
-  & .next {
-    cursor: pointer;
+}
 
-    svg{
-      width: 4rem;
-      height: 4rem;
-      stroke: $color-blue;
-      stroke-width: 1px;
-    }
-  }
+.item-internal {
+  background-color: #a5a5a5;
+  border: 1px solid #868788;
+  width:100%;
+  height: 100%;
 
-  & .prev.inactive,
-  & .next.inactive {
-    cursor: default;
-
-    svg{
-      stroke: $color-gray;
-    }
+  img {
+    width:100%;
+    height: 100%;
   }
 }
 
-.layout-info {
-  display: grid;
-  grid-template: 10rem auto 1fr / 1fr;
-  position: relative;
+.tag {
 
-  width: 100vw;
-  height: 100vh;
-  background-color: $color-yellow;
-  overflow: hidden;
-
-  @media screen and (min-width: 1024px) {
-    grid-template: 6rem auto 1fr / 1fr;
-    padding: 0;
-    position: relative;
-
-    .menu-wrapper {
-      grid-column: 1 /span 3;
-      grid-row: 1 / span 2;
-    }
-
-    .menu-background {
-      padding-left: $margin-small;
-      padding-right: $margin-small;
-      width: 100%;
-      margin: 0;
-
-      .menu-background-inner {
-        background-color: white;
-      }
-    }
-
-    .menu {
-      position: relative;
-      column-gap: 0;
-    }
-  }
-
-
-  .info-wrapper {
-    background-color: white;
-    grid-row: 2;
-    margin: 0 2.7rem 0 2.7rem;
-    height: 100%;
-    overflow: hidden;
-
-    @media screen and (min-width: 1024px) {
-      grid-column: 2;
-      grid-row: 2 / span 2;
-      display: grid;
-      grid-template: 1fr / 1fr auto;
-      background-color: transparent;
-      z-index: 2;
-    }
-  }
-
-  .info-text {
-    font-size: 1.6rem;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-
-    height: 100%;
-    overflow: auto;
-    padding: 1rem 1rem 2rem 1rem;
-
-    @media screen and (min-width: 1024px) {
-      z-index: 1;
-      grid-column: 1;
-      grid-row: 1;
-      margin: 0;
-      padding: 0;
-      font-size: 1.6rem;
-      max-width: 40rem;
-    }
-  }
-
-  .info-image {
-    width: 10rem;
-    margin-left: auto;
-
-    img {
-      width: 100%
-    }
-
-    @media screen and (min-width: 1024px) {
-      z-index: 1;
-      margin-left: 5rem;
-      width: 17rem;
-    }
-  }
 }
-

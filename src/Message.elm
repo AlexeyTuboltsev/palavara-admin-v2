@@ -1,10 +1,11 @@
 module Message exposing (..)
 
-import AppData exposing (AppData)
+import AppData exposing (AppData, ItemId, SectionId, TagId)
 import Browser
 import Browser.Dom exposing (Viewport)
+import Html.Events.Extra.Drag as Drag
 import Http
-import Route exposing (Route)
+import Json.Decode exposing (Value)
 import Url exposing (Url)
 
 type Msg
@@ -14,11 +15,8 @@ type Msg
     | SetData (Result Http.Error AppData)
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
-    | GoToRoute Route
-    | DownMsg ( Float, Float )
-    | MoveMsg ( Float, Float )
-    | UpMsg ( Float, Float )
-    | CloseMenu
-    | OpenMenu
-    | GoToShop
-    | GoToInstagram
+    | SelectSection SectionId
+    | Drop ItemId TagId
+    | DragStart ItemId Drag.EffectAllowed Value
+    | DragOver Drag.DropEffect Value
+    | DragEnd
