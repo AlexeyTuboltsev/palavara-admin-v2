@@ -6,14 +6,16 @@ import Browser.Dom exposing (Viewport, getViewport, getViewportOf)
 import Browser.Events exposing (onResize)
 import Browser.Navigation as Navigation exposing (Key, load)
 import Html exposing (Html, a, br, div, img, span, text)
-import Html.Attributes exposing (class, href, id, property, src, style, alt)
+import Html.Attributes exposing (alt, class, href, id, property, src, style)
 import Html.Events.Extra exposing (onClickPreventDefault)
 import Html.Events.Extra.Drag exposing (DropEffect(..), onDropTarget, onSourceDrag)
+import Html.Keyed exposing (node)
+import Html.Lazy exposing (lazy, lazy2, lazy3, lazy4)
 import Http exposing (expectJson, get)
 import Icons
 import List.Extra exposing (find)
 import Message exposing (Msg(..))
-import Page exposing (Page(..))
+import Page exposing (ItemViewData, Page(..), TagViewData)
 import Result exposing (Result)
 import Task
 import Url exposing (Url)
@@ -33,6 +35,7 @@ type alias ReadyModelData =
     , apiUrl : String
     , page : Page
     , data : AppData
+    , dnd : Maybe ItemId
     }
 
 
@@ -91,7 +94,7 @@ update message model =
                         sectionData =
                             getSectionData readyModelData.data (\s -> ( s.sectionId, s.label ))
 
-                        newModel =
+                        maybeNewModel =
                             find
                                 (\section ->
                                     case section of
@@ -106,20 +109,106 @@ update message model =
                                     (\s ->
                                         case s of
                                             GalleryWithTagsSectionType sd ->
-                                                Just ( sd.tags, sd.items )
+                                                let
+                                                    generateItemViewData itemData =
+                                                        ItemViewData itemData.itemId itemData.fileName itemData.urlString (readyModelData.apiUrl ++ itemData.fileName)
+
+                                                    generateTagViewData tagData =
+                                                        TagViewData tagData.label tagData.tagId (List.map generateItemViewData tagData.items)
+
+                                                    tags =
+                                                        List.map generateTagViewData sd.tags
+
+                                                    items =
+                                                        List.map generateItemViewData sd.items
+                                                in
+                                                Just ( tags, items )
 
                                             _ ->
                                                 Nothing
                                     )
-                                |> Maybe.map (\( tags, items ) -> SectionPage { activeSectionId = sectionId, sections = sectionData, tags = tags, items = items })
+                                |> Maybe.map (\( tags, items ) -> SectionPage { activeSectionId = sectionId, sections = sectionData, tags = tags, items = items, dnd = readyModelData.dnd, dragOver = Nothing })
                                 |> Maybe.map (\page -> { readyModelData | page = page })
                     in
-                    case newModel of
+                    case maybeNewModel of
                         Just nm ->
                             ( ReadyModel nm, Cmd.none )
 
                         Nothing ->
                             ( ReadyModel readyModelData, Cmd.none )
+
+                DragStart itemId effectAllowed value ->
+                    let
+                        _ =
+                            Debug.log "dragstart itemId" itemId
+
+                        _ =
+                            Debug.log "dragstart effectAllowed" effectAllowed
+
+                        _ =
+                            Debug.log "dragstart value" value
+
+                        newPage =
+                            case readyModelData.page of
+                                InitialPage _ ->
+                                    readyModelData.page
+
+                                SectionPage sectionPageData ->
+                                    SectionPage { sectionPageData | dnd = Just itemId }
+                    in
+                    ( ReadyModel { readyModelData | page = newPage, dnd = Just itemId }, Cmd.none )
+
+                DragOver _ _ ->
+                    ( ReadyModel readyModelData, Cmd.none )
+
+                DragEnter tagId itemId dropTargetPosition _ ->
+                    let
+                        newPage =
+                            case readyModelData.page of
+                                InitialPage _ ->
+                                    readyModelData.page
+
+                                SectionPage sectionPageData ->
+                                    SectionPage { sectionPageData | dragOver = Just ( tagId, itemId, dropTargetPosition ) }
+                    in
+                    ( ReadyModel { readyModelData | page = newPage }, Cmd.none )
+
+                DragLeave tagId itemId dropTargetPosition event ->
+                    let
+                        newPage =
+                            case readyModelData.page of
+                                InitialPage _ ->
+                                    readyModelData.page
+
+                                SectionPage sectionPageData ->
+                                    SectionPage { sectionPageData | dragOver = Nothing }
+                    in
+                    ( ReadyModel { readyModelData | page = newPage }, Cmd.none )
+
+                DragEnd _ _ event ->
+                    let
+                        _ =
+                            Debug.log "DragEnd" event
+
+                        newPage =
+                            case readyModelData.page of
+                                InitialPage _ ->
+                                    readyModelData.page
+
+                                SectionPage sectionPageData ->
+                                    SectionPage { sectionPageData | dnd = Nothing, dragOver = Nothing }
+                    in
+                    ( ReadyModel { readyModelData | page = newPage, dnd = Nothing }, Cmd.none )
+
+                Drop itemId dropTargetPosition ->
+                    let
+                        _ =
+                            Debug.log "Drop itemId" itemId
+
+                        _ =
+                            Debug.log "Drop dropTargetPosition" dropTargetPosition
+                    in
+                    ( ReadyModel readyModelData, Cmd.none )
 
                 UrlChanged url ->
                     ( ReadyModel readyModelData, Cmd.none )
@@ -132,19 +221,17 @@ allFieldsPresent : Model -> Maybe ReadyModelData
 allFieldsPresent newModel =
     case newModel of
         InitModel data ->
-            Maybe.map5
-                (\appData urlString key url page ->
-                    { data = appData, apiUrl = urlString, key = key, page = page }
+            Maybe.map
+                (\d ->
+                    let
+                        page =
+                            getSectionData d (\s -> ( s.sectionId, s.label ))
+                                |> Page.InitialPageData
+                                |> InitialPage
+                    in
+                    { data = d, apiUrl = data.dataUrl, key = data.key, page = page, dnd = Nothing }
                 )
                 data.data
-                (Just data.dataUrl)
-                (Just data.key)
-                (Just data.url)
-                (data.data
-                    |> Maybe.map (\d -> getSectionData d (\s -> ( s.sectionId, s.label )))
-                    |> Maybe.map (\d -> Page.InitialPageData d)
-                    |> Maybe.map (\initPageData -> InitialPage initPageData)
-                )
 
         _ ->
             Nothing
@@ -234,56 +321,122 @@ contentPage page =
     case page of
         InitialPage { sections } ->
             [ div [ class "layout" ]
-                [ div [ class "menu" ] (menu sections)
+                [ lazy menu sections
                 ]
             ]
 
-        SectionPage { sections, activeSectionId, tags, items } ->
+        SectionPage { sections, activeSectionId, tags, items, dnd, dragOver } ->
             [ div [ class "layout" ]
-                [ div [ class "menu" ] (menu sections)
+                [ lazy menu sections
                 , div [ class "section" ]
                     [ div [ class "sectionTitle" ] [ text activeSectionId ]
-                    , div [ class "items" ] (itemList items)
-                    , div [ class "tags" ] (tagList tags)
+                    , node "div" [ class "items" ] (itemList items)
+                    , div [ class "tags" ] (tagList tags dnd dragOver)
                     ]
                 ]
             ]
 
 
-menu : List ( SectionId, String ) -> List (Html Msg)
+menu : List ( SectionId, String ) -> Html Msg
 menu sections =
-    List.map
-        (\( sectionId, label ) ->
-            div [ class "menu-section" ]
-                [ div [ onClickPreventDefault (SelectSection sectionId) ] [ text label ]
-                ]
-        )
-        sections
+    div [ class "menu" ] <|
+        List.map
+            (\( sectionId, label ) ->
+                div [ class "menu-section" ]
+                    [ div [ onClickPreventDefault (SelectSection sectionId) ] [ text label ]
+                    ]
+            )
+            sections
 
 
-tagList : List TagData -> List (Html Msg)
-tagList tagData =
+tagList : List TagViewData -> Maybe ItemId -> Maybe ( TagId, ItemId, DropTargetPosition ) -> List (Html Msg)
+tagList tagData dnd maybeDragOver =
     List.map
-        (\tag ->
+        (\{ label, items, tagId } ->
             div [ class "tag" ]
-                [ text tag.label
-                , div [ class "items" ] (itemList tag.items)
+                [ text label
+                , lazy4 itemRow
+                    items
+                    tagId
+                    dnd
+                    (Maybe.andThen
+                        (\( dndTagId, dndItemId, position ) ->
+                            if dndTagId == tagId then
+                                Just ( dndItemId, position )
+
+                            else
+                                Nothing
+                        )
+                        maybeDragOver
+                    )
                 ]
         )
         tagData
 
 
-itemList items =
+itemRow items tagId dnd maybeDndItemId =
+    node "div" [ class "items" ] (dropzoneItemList items tagId maybeDndItemId)
+
+
+dropzoneItemList items tagId maybeDndItemId =
     List.indexedMap
-        (\i item ->
-            div ( class "item" ::(onSourceDrag {effectAllowed = {move = True, copy = False, link = False}, onStart = DragStart item.itemId, onEnd = always DragEnd, onDrag = Nothing}))
-                [
-                 div (class "item-dropzone" :: (onDropTarget {dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop item.itemId "bla"), onEnter = Nothing, onLeave = Nothing})) []
-                 , div [class "item-internal"] [ img [ src item.fileName, alt item.fileName ] []]
-                 , div  (class "item-dropzone" :: (onDropTarget {dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop item.itemId "bla"), onEnter = Nothing, onLeave = Nothing})) []
-                ]
+        (\i itemData ->
+            ( itemData.itemId
+            , lazy3 dropzoneItemView itemData tagId maybeDndItemId
+            )
         )
         items
+
+
+dropzoneItemView itemData tagId maybeDndItemId =
+    div (class "item" :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
+        [ div (class ("item-dropzone-left dropTarget" ++ isActive maybeDndItemId itemData.itemId Before) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop itemData.itemId Before), onEnter = Just (DragEnter tagId itemData.itemId Before), onLeave = Just (DragLeave tagId itemData.itemId Before) }) []
+        , div [ class "item-internal dnd" ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+        , div (class ("item-dropzone-right dropTarget" ++ isActive maybeDndItemId itemData.itemId After) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop itemData.itemId After), onEnter = Just (DragEnter tagId itemData.itemId After), onLeave = Just (DragLeave tagId itemData.itemId After) }) []
+        ]
+
+
+isActive maybeDndItemId itemId position =
+    case maybeDndItemId of
+        Nothing ->
+            ""
+
+        Just ( dndItemId, dndPosition ) ->
+            if dndItemId == itemId && positionIsEqual dndPosition position then
+                " active"
+
+            else
+                ""
+
+
+positionIsEqual x y =
+    case ( x, y ) of
+        ( Before, Before ) ->
+            True
+
+        ( After, After ) ->
+            True
+
+        _ ->
+            False
+
+
+itemList items =
+    List.indexedMap
+        (\i itemData ->
+            ( itemData.itemId
+            , lazy itemView itemData
+            )
+        )
+        items
+
+
+itemView itemData =
+    div [ class "item" ]
+        [ div [ class "item-dropzone-left" ] []
+        , div [ class "item-internal dnd" ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+        , div [ class "item-dropzone-right" ] []
+        ]
 
 
 

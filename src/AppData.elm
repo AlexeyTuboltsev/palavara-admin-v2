@@ -61,7 +61,9 @@ type alias AppData =
     List SectionData
 
 
-
+type DropTargetPosition =
+    Before
+    | After
 -- JSON --
 
 

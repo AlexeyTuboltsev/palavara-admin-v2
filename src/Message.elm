@@ -1,9 +1,9 @@
 module Message exposing (..)
 
-import AppData exposing (AppData, ItemId, SectionId, TagId)
+import AppData exposing (AppData, DropTargetPosition, ItemId, SectionId, TagId)
 import Browser
 import Browser.Dom exposing (Viewport)
-import Html.Events.Extra.Drag as Drag
+import Html.Events.Extra.Drag as Drag exposing (Event)
 import Http
 import Json.Decode exposing (Value)
 import Url exposing (Url)
@@ -16,7 +16,9 @@ type Msg
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
     | SelectSection SectionId
-    | Drop ItemId TagId
+    | Drop ItemId DropTargetPosition
     | DragStart ItemId Drag.EffectAllowed Value
     | DragOver Drag.DropEffect Value
-    | DragEnd
+    | DragEnter TagId ItemId DropTargetPosition Event
+    | DragLeave TagId ItemId DropTargetPosition Event
+    | DragEnd TagId ItemId Event
