@@ -13,7 +13,7 @@ import Html.Keyed exposing (node)
 import Html.Lazy exposing (lazy, lazy2, lazy3, lazy4)
 import Http exposing (expectJson, get)
 import Icons
-import List.Extra exposing (find)
+import List.Extra exposing (find, findIndex, getAt, removeAt, setIf, splitAt, unique)
 import Message exposing (Msg(..))
 import Page exposing (ItemViewData, Page(..), TagViewData)
 import Result exposing (Result)
@@ -35,7 +35,7 @@ type alias ReadyModelData =
     , apiUrl : String
     , page : Page
     , data : AppData
-    , dnd : Maybe ItemId
+    , dnd : Maybe (TagId,ItemId)
     }
 
 
@@ -111,7 +111,7 @@ update message model =
                                             GalleryWithTagsSectionType sd ->
                                                 let
                                                     generateItemViewData itemData =
-                                                        ItemViewData itemData.itemId itemData.fileName itemData.urlString (readyModelData.apiUrl ++ itemData.fileName)
+                                                        ItemViewData itemData.itemId itemData.fileName itemData.urlString (readyModelData.apiUrl ++ itemData.fileName) False
 
                                                     generateTagViewData tagData =
                                                         TagViewData tagData.label tagData.tagId (List.map generateItemViewData tagData.items)
@@ -137,26 +137,17 @@ update message model =
                         Nothing ->
                             ( ReadyModel readyModelData, Cmd.none )
 
-                DragStart itemId effectAllowed value ->
+                DragStart tagId itemId effectAllowed value ->
                     let
-                        _ =
-                            Debug.log "dragstart itemId" itemId
-
-                        _ =
-                            Debug.log "dragstart effectAllowed" effectAllowed
-
-                        _ =
-                            Debug.log "dragstart value" value
-
                         newPage =
                             case readyModelData.page of
                                 InitialPage _ ->
                                     readyModelData.page
 
                                 SectionPage sectionPageData ->
-                                    SectionPage { sectionPageData | dnd = Just itemId }
+                                    SectionPage { sectionPageData | dnd = Just (tagId,itemId) }
                     in
-                    ( ReadyModel { readyModelData | page = newPage, dnd = Just itemId }, Cmd.none )
+                    ( ReadyModel { readyModelData | page = newPage, dnd = Just (tagId,itemId) }, Cmd.none )
 
                 DragOver _ _ ->
                     ( ReadyModel readyModelData, Cmd.none )
@@ -185,11 +176,8 @@ update message model =
                     in
                     ( ReadyModel { readyModelData | page = newPage }, Cmd.none )
 
-                DragEnd _ _ event ->
+                DragEnd _ _ _ ->
                     let
-                        _ =
-                            Debug.log "DragEnd" event
-
                         newPage =
                             case readyModelData.page of
                                 InitialPage _ ->
@@ -197,24 +185,145 @@ update message model =
 
                                 SectionPage sectionPageData ->
                                     SectionPage { sectionPageData | dnd = Nothing, dragOver = Nothing }
+
+                        _ =
+                            Debug.log "-->DragEnd" ""
                     in
                     ( ReadyModel { readyModelData | page = newPage, dnd = Nothing }, Cmd.none )
 
-                Drop itemId dropTargetPosition ->
-                    let
-                        _ =
-                            Debug.log "Drop itemId" itemId
+                Drop targetTagId targetItemId dropTargetPosition ->
+                    case readyModelData.page of
+                        SectionPage sectionPageData ->
+                            let maybeNewPage = readyModelData.dnd
+                                    |> Maybe.andThen (\(sourceTagId, sourceItemId) -> dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData)
 
-                        _ =
-                            Debug.log "Drop dropTargetPosition" dropTargetPosition
-                    in
-                    ( ReadyModel readyModelData, Cmd.none )
+
+                            in
+                            case maybeNewPage of
+                                Just page ->
+                                    ( ReadyModel { readyModelData | page = page, dnd = Nothing }, Cmd.none )
+
+                                Nothing ->
+                                    ( ReadyModel readyModelData, Cmd.none )
+
+                        InitialPage _ ->
+                            ( ReadyModel readyModelData, Cmd.none )
 
                 UrlChanged url ->
                     ( ReadyModel readyModelData, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
+
+
+dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData =
+    let
+
+        maybeActiveTagViewData =
+            find (\tagData -> tagData.tagId == targetTagId) sectionPageData.tags
+
+        maybeTargetIndex =
+            maybeActiveTagViewData
+                |> Maybe.andThen (\( tagData ) ->
+                             findIndex (\item -> item.itemId == targetItemId) tagData.items
+                         )
+                 |> Maybe.map (\i -> case dropTargetPosition of
+                        Before -> i
+                        After -> i+1
+                 )
+
+        maybeSourceIndex =
+            maybeActiveTagViewData
+            |> Maybe.andThen (\tagData ->findIndex (\item -> item.itemId == sourceItemId) tagData.items)
+
+
+        maybeNewItems =
+            Maybe.map3 (\tagData sourceIndex targetIndex -> move sourceIndex 1 targetIndex tagData.items) maybeActiveTagViewData maybeSourceIndex maybeTargetIndex
+
+        maybeNewPage =
+            maybeActiveTagViewData
+                |> Maybe.map2 (\newItems tagData -> { tagData | items = newItems }) maybeNewItems
+                |> Maybe.map (\newTagData -> setIf (\{ tagId } -> tagId == newTagData.tagId) newTagData sectionPageData.tags)
+                |> Maybe.map (\newTags -> SectionPage { sectionPageData | tags = newTags })
+    in
+    maybeNewPage
+
+move originalPositionIndex originalLength targetPositionIndex list =
+    let
+        _ = Debug.log "originalPositionIndex + originalLength" (originalPositionIndex + originalLength)
+        _ = Debug.log "(List.length list) + 1" ((List.length list))
+    in
+    if (originalPositionIndex < targetPositionIndex)
+        && ((originalPositionIndex + originalLength) > targetPositionIndex) then
+        list
+
+    else if (originalPositionIndex + originalLength) > (List.length list) || originalPositionIndex < 0 then
+        list
+
+    else if targetPositionIndex > (List.length list) || targetPositionIndex < 0 then
+        list
+
+    else
+    split [originalPositionIndex,(originalPositionIndex + originalLength), targetPositionIndex] list
+        |> debugLog "split"
+        |> (\acc ->
+            let _ = Debug.log "acc" acc
+            in
+            case acc of
+                [a,b,c,d] ->
+
+                    List.concat [a,c,b,d]
+                _ ->
+                     []
+        )
+
+
+
+split points list =
+    points
+        |> unique
+        |> List.sort
+        |> List.foldr
+            (\point ( rest, acc ) ->
+                splitAt point rest
+                    |> (\( nextRest, x ) -> ( nextRest, x :: acc ))
+            )
+            ( list, [] )
+        |> (\(last, acc) -> last::acc)
+
+
+insert dropTargetPosition itemIndex list item =
+    case dropTargetPosition of
+        Before ->
+            insertBefore list itemIndex item
+
+        After ->
+            insertAfter list itemIndex item
+
+
+insertBefore list itemIndex item =
+    case itemIndex of
+        0 ->
+            item :: list
+
+        _ ->
+            let
+                ( a, b ) =
+                    splitAt itemIndex list
+            in
+            List.concat [ a, [ item ], b ]
+
+
+insertAfter list itemIndex item =
+    if (itemIndex + 1) == List.length list then
+        List.append list [ item ]
+
+    else
+        let
+            ( a, b ) =
+                splitAt (itemIndex + 1) list
+        in
+        List.concat [ a, [ item ], b ]
 
 
 allFieldsPresent : Model -> Maybe ReadyModelData
@@ -349,7 +458,7 @@ menu sections =
             sections
 
 
-tagList : List TagViewData -> Maybe ItemId -> Maybe ( TagId, ItemId, DropTargetPosition ) -> List (Html Msg)
+tagList : List TagViewData -> Maybe (tagId, ItemId) -> Maybe ( TagId, ItemId, DropTargetPosition ) -> List (Html Msg)
 tagList tagData dnd maybeDragOver =
     List.map
         (\{ label, items, tagId } ->
@@ -389,10 +498,10 @@ dropzoneItemList items tagId maybeDndItemId =
 
 
 dropzoneItemView itemData tagId maybeDndItemId =
-    div (class "item" :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
-        [ div (class ("item-dropzone-left dropTarget" ++ isActive maybeDndItemId itemData.itemId Before) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop itemData.itemId Before), onEnter = Just (DragEnter tagId itemData.itemId Before), onLeave = Just (DragLeave tagId itemData.itemId Before) }) []
+    div (class "item" :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart tagId itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
+        [ div (class ("item-dropzone-left dropTarget" ++ isActive maybeDndItemId itemData.itemId Before) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId Before), onEnter = Just (DragEnter tagId itemData.itemId Before), onLeave = Just (DragLeave tagId itemData.itemId Before) }) []
         , div [ class "item-internal dnd" ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
-        , div (class ("item-dropzone-right dropTarget" ++ isActive maybeDndItemId itemData.itemId After) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop itemData.itemId After), onEnter = Just (DragEnter tagId itemData.itemId After), onLeave = Just (DragLeave tagId itemData.itemId After) }) []
+        , div (class ("item-dropzone-right dropTarget" ++ isActive maybeDndItemId itemData.itemId After) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId After), onEnter = Just (DragEnter tagId itemData.itemId After), onLeave = Just (DragLeave tagId itemData.itemId After) }) []
         ]
 
 
@@ -439,11 +548,9 @@ itemView itemData =
         ]
 
 
-
---
---debugLog s x =
---    let
---        _ =
---            Debug.log s x
---    in
---    x
+debugLog s x =
+    let
+        _ =
+            Debug.log s x
+    in
+    x
