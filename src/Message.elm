@@ -16,8 +16,8 @@ type Msg
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
     | SelectSection SectionId
-    | Drop ItemId DropTargetPosition
-    | DragStart ItemId Drag.EffectAllowed Value
+    | Drop TagId ItemId DropTargetPosition
+    | DragStart TagId ItemId Drag.EffectAllowed Value
     | DragOver Drag.DropEffect Value
     | DragEnter TagId ItemId DropTargetPosition Event
     | DragLeave TagId ItemId DropTargetPosition Event

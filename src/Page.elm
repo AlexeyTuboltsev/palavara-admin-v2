@@ -18,7 +18,7 @@ type alias SectionPageData =
     , activeSectionId : SectionId
     , tags : List TagViewData
     , items : List ItemViewData
-    , dnd: Maybe ItemId
+    , dnd: Maybe (TagId, ItemId)
     , dragOver: Maybe (TagId, ItemId, DropTargetPosition)
     }
 
@@ -27,6 +27,7 @@ type alias ItemViewData =
     , fileName : String
     , urlString : String
     , src: String
+    , isLoading: Bool
     }
 
 type alias TagViewData =
