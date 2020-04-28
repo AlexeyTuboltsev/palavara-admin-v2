@@ -1,6 +1,7 @@
 module AppData exposing (..)
 
 import Json.Decode as JD
+import Json.Encode as JE
 
 
 type alias SectionId =
@@ -123,3 +124,33 @@ sectionDataDecoder =
                     _ ->
                         JD.fail "no luck today"
             )
+
+encodeAppData appData =
+    JE.list sectionEncoder appData
+
+sectionEncoder section =
+    case section of
+        GalleryWithTagsSectionType data ->
+            JE.object
+                [ ("label", JE.string data.label)
+                , ("sectionId", JE.string data.sectionId)
+                , ("items", JE.list itemEncoder data.items)
+                , ("tags", JE.list tagEncoder data.tags)
+                ]
+
+        _ ->
+            JE.object [] --todo
+
+tagEncoder tag =
+    JE.object
+        [("label", JE.string tag.label)
+        ,("tagId", JE.string tag.tagId)
+        ,("items", JE.list itemEncoder tag.items)
+        ]
+
+itemEncoder item =
+    JE.object
+        [("itemId", JE.string item.itemId)
+        , ("fileName", JE.string item.fileName)
+        , ("urlString", JE.string item.urlString)
+        ]

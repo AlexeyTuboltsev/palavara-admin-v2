@@ -13,7 +13,7 @@ import Html.Keyed exposing (node)
 import Html.Lazy exposing (lazy, lazy2, lazy3, lazy4)
 import Http exposing (expectJson, get)
 import Icons
-import List.Extra as LE exposing (find, findIndex, getAt, removeAt, setIf, splitAt, unique)
+import List.Extra as LE exposing (find, findIndex, getAt, removeAt, setAt, setIf, splitAt, unique, updateAt)
 import Message exposing (Msg(..))
 import Page exposing (ItemViewData, Page(..), SectionPageData, TagViewData)
 import Result exposing (Result)
@@ -36,6 +36,7 @@ type alias ReadyModelData =
     , apiUrl : String
     , page : Page
     , data : AppData
+    , tempData : Maybe AppData
     , dnd : Maybe ( TagId, ItemId )
     }
 
@@ -197,42 +198,125 @@ update message model =
                     case readyModelData.page of
                         SectionPage sectionPageData ->
                             let
-                                maybeNewPage =
+                                maybeSectionData =
+                                    Utils.find
+                                        (\section ->
+                                            case section of
+                                                GalleryWithTagsSectionType { sectionId } ->
+                                                    sectionId == sectionPageData.activeSectionId
+
+                                                _ ->
+                                                    False
+                                        )
+                                        readyModelData.data
+                                        ("Could not find section with id " ++ sectionPageData.activeSectionId ++ " in appData")
+                                        |> Result.andThen
+                                            (\section ->
+                                                case section of
+                                                    GalleryWithTagsSectionType sectionData ->
+                                                        Ok sectionData
+
+                                                    _ ->
+                                                        Err ("Could not find section with id " ++ sectionPageData.activeSectionId ++ " in appData")
+                                            )
+
+                                maybeNewAppDataAndPage =
                                     readyModelData.dnd
                                         |> Result.fromMaybe "DnD data not found"
-                                        |> Result.andThen (\( sourceTagId, sourceItemId ) -> dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData)
+                                        |> Result.andThen (\( sourceTagId, sourceItemId ) -> dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData readyModelData.data)
                             in
-                            case maybeNewPage of
-                                Ok page ->
-                                    ( ReadyModel { readyModelData | page = page, dnd = Nothing }, Cmd.none )
+                            case maybeNewAppDataAndPage of
+                                Ok (tempAppData,page) ->
+                                    let
+                                        appDataStringified =
+                                            encodeAppData tempAppData
+                                            |> debugLog "json:"
+
+                                        saveToApi =
+                                            Http.post
+                                                {url = "bla"
+                                                , body = Http.jsonBody appDataStringified
+                                                , expect = expectJson SetData appDataDecoder
+                                                }
+
+                                    in
+                                    ( ReadyModel { readyModelData | page = page, tempData = Just tempAppData, dnd = Nothing }, saveToApi )
 
                                 Err errMessage ->
                                     ( ReadyModel readyModelData, Cmd.none )
 
                         InitialPage _ ->
                             ( ReadyModel readyModelData, Cmd.none )
+                SetData result ->
+                    case result of
+                        Err err ->
+                            ( ReadyModel readyModelData, Cmd.none )
 
+                        Ok data ->
+                            ( ReadyModel readyModelData, Cmd.none )
                 UrlChanged url ->
                     ( ReadyModel readyModelData, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
 
-dndMove: TagId -> ItemId -> TagId -> ItemId -> DropTargetPosition -> SectionPageData -> Result String Page
-dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData =
+
+dndMove : TagId -> ItemId -> TagId -> ItemId -> DropTargetPosition -> SectionPageData -> AppData -> Result String (AppData,Page)
+dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData appData =
     let
+        maybeSectionIndex =
+            Utils.findIndex
+                (\section ->
+                    case section of
+                        GalleryWithTagsSectionType { sectionId } ->
+                            sectionId == sectionPageData.activeSectionId
+
+                        _ ->
+                            False
+                )
+                appData
+                ("Could not find section with id " ++ sectionPageData.activeSectionId ++ " in appData")
+
+        maybeSectionData =
+            maybeSectionIndex
+                |> Result.andThen
+                    (\i ->
+                        getAt i appData
+                            |> Result.fromMaybe ("Could not find section with id " ++ sectionPageData.activeSectionId ++ " in appData")
+
+                    )
+                |> Result.andThen
+                    (\section ->
+                        case section of
+                            GalleryWithTagsSectionType sectionData ->
+                                Ok sectionData
+
+                            _ ->
+                                Err ("Could not find section with id " ++ sectionPageData.activeSectionId ++ " in appData")
+                    )
+
+        maybeTargetTagData =
+            maybeSectionData
+                |> Result.andThen
+                    (\data ->
+                        Utils.find
+                            (\tagData -> tagData.tagId == targetTagId)
+                            data.tags
+                            ("Could not find tag with id " ++ targetTagId)
+                    )
+
         maybeTargetTagViewData =
             Utils.find
                 (\tagData -> tagData.tagId == targetTagId)
                 sectionPageData.tags
-                ("Could not find tag with id " ++ targetTagId)
+                ("Could not find tag page data with id " ++ targetTagId)
 
         maybeTargetIndex =
-            maybeTargetTagViewData
+            maybeTargetTagData
                 |> Result.andThen
                     (\tagData ->
                         Utils.findIndex
-                            (\item -> item.itemId == targetItemId)
+                            (\{ itemId } -> itemId == targetItemId)
                             tagData.items
                             ("Could not find an item with id " ++ targetItemId)
                     )
@@ -246,7 +330,26 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                                 i + 1
                     )
 
-        maybeNewItems =
+        maybeTargetViewIndex =
+            maybeTargetTagViewData
+                |> Result.andThen
+                    (\tagData ->
+                        Utils.findIndex
+                            (\{ itemId } -> itemId == targetItemId)
+                            tagData.items
+                            ("Could not find an item with id " ++ targetItemId)
+                    )
+                |> Result.map
+                    (\i ->
+                        case dropTargetPosition of
+                            Before ->
+                                i
+
+                            After ->
+                                i + 1
+                    )
+
+        maybeNewViewItems =
             case sourceTagId == targetTagId of
                 True ->
                     maybeTargetTagViewData
@@ -256,13 +359,13 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                                     (\item -> item.itemId == sourceItemId)
                                     tagData.items
                                     ("Could not find an item with id " ++ sourceItemId)
+                                |> Result.map (\i -> (updateAt i (\item -> { item | isLoading = True }) tagData.items,i))
                             )
-                        |> Result.map3
-                            (\tagData targetIndex sourceIndex ->
-                                move sourceIndex 1 targetIndex tagData.items
+                        |> Result.map2
+                            (\targetIndex (items,sourceIndex) ->
+                                move sourceIndex 1 targetIndex items
                             )
-                            maybeTargetTagViewData
-                            maybeTargetIndex
+                            maybeTargetViewIndex
 
                 False ->
                     Utils.find
@@ -282,13 +385,62 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                                 insert targetIndex tagData.items item
                             )
                             maybeTargetTagViewData
+                            maybeTargetViewIndex
+
+        maybeNewItems =
+            case sourceTagId == targetTagId of
+                True ->
+                    maybeTargetTagData
+                        |> Result.andThen
+                            (\tagData ->
+                                Utils.findIndex
+                                    (\item -> item.itemId == sourceItemId)
+                                    tagData.items
+                                    ("Could not find an item with id " ++ sourceItemId)
+                            )
+                        |> Result.map3
+                            (\tagData targetIndex sourceIndex ->
+                                move sourceIndex 1 targetIndex tagData.items
+                            )
+                            maybeTargetTagData
                             maybeTargetIndex
+
+                False ->
+                    maybeSectionData
+                        |> Result.andThen
+                            (\{tags} ->
+                                Utils.find
+                                    (\tagData -> tagData.tagId == sourceTagId)
+                                    tags
+                                    ("Could not find a tag with id " ++ sourceTagId)
+                            )
+                        |> Result.andThen
+                            (\{ items } ->
+                                Utils.find
+                                    (\{ itemId } -> itemId == sourceItemId)
+                                    items
+                                    ("Could not find an item with id " ++ sourceItemId)
+                            )
+                        |> Result.map3
+                            (\tagData targetIndex item ->
+                                insert targetIndex tagData.items item
+                            )
+                            maybeTargetTagData
+                            maybeTargetIndex
+
+        maybeAppData =
+            Result.map2 (\tag items -> {tag | items = items}) maybeTargetTagData maybeNewItems
+                |> Result.map2 (\sectionData newTag -> setIf (\tag -> newTag.tagId == tag.tagId) newTag sectionData.tags) maybeSectionData
+                |> Result.map2 (\sectionData newTags -> {sectionData| tags = newTags}) maybeSectionData
+                |> Result.map (\sectionData -> GalleryWithTagsSectionType sectionData)
+                |> Result.map2 (\i section -> (i,section)) maybeSectionIndex
+                |> Result.map (\(i,section) -> setAt i section appData)
+        maybeNewPage =
+                Result.map2 (\newItems tagData -> { tagData | items = newItems }) maybeNewViewItems maybeTargetTagViewData
+                    |> Result.map (\newTagData -> setIf (\{ tagId } -> tagId == newTagData.tagId) newTagData sectionPageData.tags)
+                    |> Result.map (\newTags -> SectionPage { sectionPageData | tags = newTags })
     in
-    Result.map2 (\newItems tagData -> { tagData | items = newItems }) maybeNewItems maybeTargetTagViewData
-        |> Result.map (\newTagData -> setIf (\{ tagId } -> tagId == newTagData.tagId) newTagData sectionPageData.tags)
-        |> Result.map (\newTags -> SectionPage { sectionPageData | tags = newTags })
-
-
+    Result.map2 (\newAppData newPage -> (newAppData, newPage)) maybeAppData maybeNewPage
 
 
 
@@ -304,7 +456,7 @@ allFieldsPresent newModel =
                                 |> Page.InitialPageData
                                 |> InitialPage
                     in
-                    { data = d, apiUrl = data.dataUrl, key = data.key, page = page, dnd = Nothing }
+                    { data = d, tempData = Nothing, apiUrl = data.dataUrl, key = data.key, page = page, dnd = Nothing }
                 )
                 data.data
 
@@ -469,10 +621,15 @@ dropzoneItemView itemData tagId maybeDndItemId =
         , div (class ("item-dropzone-right dropTarget" ++ isActive maybeDndItemId itemData.itemId After) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId After), onEnter = Just (DragEnter tagId itemData.itemId After), onLeave = Just (DragLeave tagId itemData.itemId After) }) []
         ]
 
+
 isLoading itemData =
     case itemData.isLoading of
-        True-> "loading"
-        False -> ""
+        True ->
+            "loading"
+
+        False ->
+            ""
+
 
 isActive maybeDndItemId itemId position =
     case maybeDndItemId of
@@ -485,9 +642,6 @@ isActive maybeDndItemId itemId position =
 
             else
                 ""
-
-
-
 
 
 itemList items =
