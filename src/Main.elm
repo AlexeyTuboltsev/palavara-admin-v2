@@ -13,12 +13,13 @@ import Html.Keyed exposing (node)
 import Html.Lazy exposing (lazy, lazy2, lazy3, lazy4)
 import Http exposing (expectJson, get)
 import Icons
-import List.Extra exposing (find, findIndex, getAt, removeAt, setIf, splitAt, unique)
+import List.Extra as LE exposing (find, findIndex, getAt, removeAt, setIf, splitAt, unique)
 import Message exposing (Msg(..))
-import Page exposing (ItemViewData, Page(..), TagViewData)
+import Page exposing (ItemViewData, Page(..), SectionPageData, TagViewData)
 import Result exposing (Result)
 import Task
 import Url exposing (Url)
+import Utils exposing (find, findIndex, insert, move, positionIsEqual)
 
 
 type alias Flags =
@@ -35,7 +36,7 @@ type alias ReadyModelData =
     , apiUrl : String
     , page : Page
     , data : AppData
-    , dnd : Maybe (TagId,ItemId)
+    , dnd : Maybe ( TagId, ItemId )
     }
 
 
@@ -95,7 +96,7 @@ update message model =
                             getSectionData readyModelData.data (\s -> ( s.sectionId, s.label ))
 
                         maybeNewModel =
-                            find
+                            Utils.find
                                 (\section ->
                                     case section of
                                         GalleryWithTagsSectionType sd ->
@@ -105,7 +106,8 @@ update message model =
                                             False
                                 )
                                 readyModelData.data
-                                |> Maybe.andThen
+                                ("Could not find a section with id " ++ sectionId)
+                                |> Result.andThen
                                     (\s ->
                                         case s of
                                             GalleryWithTagsSectionType sd ->
@@ -122,22 +124,22 @@ update message model =
                                                     items =
                                                         List.map generateItemViewData sd.items
                                                 in
-                                                Just ( tags, items )
+                                                Ok ( tags, items )
 
                                             _ ->
-                                                Nothing
+                                                Err ("Wrong section type for section with id " ++ sectionId)
                                     )
-                                |> Maybe.map (\( tags, items ) -> SectionPage { activeSectionId = sectionId, sections = sectionData, tags = tags, items = items, dnd = readyModelData.dnd, dragOver = Nothing })
-                                |> Maybe.map (\page -> { readyModelData | page = page })
+                                |> Result.map (\( tags, items ) -> SectionPage { activeSectionId = sectionId, sections = sectionData, tags = tags, items = items, dnd = readyModelData.dnd, dragOver = Nothing })
+                                |> Result.map (\page -> { readyModelData | page = page })
                     in
                     case maybeNewModel of
-                        Just nm ->
+                        Ok nm ->
                             ( ReadyModel nm, Cmd.none )
 
-                        Nothing ->
+                        Err errMessage ->
                             ( ReadyModel readyModelData, Cmd.none )
 
-                DragStart tagId itemId effectAllowed value ->
+                DragStart tagId itemId _ _ ->
                     let
                         newPage =
                             case readyModelData.page of
@@ -145,9 +147,9 @@ update message model =
                                     readyModelData.page
 
                                 SectionPage sectionPageData ->
-                                    SectionPage { sectionPageData | dnd = Just (tagId,itemId) }
+                                    SectionPage { sectionPageData | dnd = Just ( tagId, itemId ) }
                     in
-                    ( ReadyModel { readyModelData | page = newPage, dnd = Just (tagId,itemId) }, Cmd.none )
+                    ( ReadyModel { readyModelData | page = newPage, dnd = Just ( tagId, itemId ) }, Cmd.none )
 
                 DragOver _ _ ->
                     ( ReadyModel readyModelData, Cmd.none )
@@ -194,16 +196,17 @@ update message model =
                 Drop targetTagId targetItemId dropTargetPosition ->
                     case readyModelData.page of
                         SectionPage sectionPageData ->
-                            let maybeNewPage = readyModelData.dnd
-                                    |> Maybe.andThen (\(sourceTagId, sourceItemId) -> dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData)
-
-
+                            let
+                                maybeNewPage =
+                                    readyModelData.dnd
+                                        |> Result.fromMaybe "DnD data not found"
+                                        |> Result.andThen (\( sourceTagId, sourceItemId ) -> dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData)
                             in
                             case maybeNewPage of
-                                Just page ->
+                                Ok page ->
                                     ( ReadyModel { readyModelData | page = page, dnd = Nothing }, Cmd.none )
 
-                                Nothing ->
+                                Err errMessage ->
                                     ( ReadyModel readyModelData, Cmd.none )
 
                         InitialPage _ ->
@@ -215,115 +218,78 @@ update message model =
                 _ ->
                     ( model, Cmd.none )
 
-
+dndMove: TagId -> ItemId -> TagId -> ItemId -> DropTargetPosition -> SectionPageData -> Result String Page
 dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData =
     let
-
-        maybeActiveTagViewData =
-            find (\tagData -> tagData.tagId == targetTagId) sectionPageData.tags
+        maybeTargetTagViewData =
+            Utils.find
+                (\tagData -> tagData.tagId == targetTagId)
+                sectionPageData.tags
+                ("Could not find tag with id " ++ targetTagId)
 
         maybeTargetIndex =
-            maybeActiveTagViewData
-                |> Maybe.andThen (\( tagData ) ->
-                             findIndex (\item -> item.itemId == targetItemId) tagData.items
-                         )
-                 |> Maybe.map (\i -> case dropTargetPosition of
-                        Before -> i
-                        After -> i+1
-                 )
+            maybeTargetTagViewData
+                |> Result.andThen
+                    (\tagData ->
+                        Utils.findIndex
+                            (\item -> item.itemId == targetItemId)
+                            tagData.items
+                            ("Could not find an item with id " ++ targetItemId)
+                    )
+                |> Result.map
+                    (\i ->
+                        case dropTargetPosition of
+                            Before ->
+                                i
 
-        maybeSourceIndex =
-            maybeActiveTagViewData
-            |> Maybe.andThen (\tagData ->findIndex (\item -> item.itemId == sourceItemId) tagData.items)
-
+                            After ->
+                                i + 1
+                    )
 
         maybeNewItems =
-            Maybe.map3 (\tagData sourceIndex targetIndex -> move sourceIndex 1 targetIndex tagData.items) maybeActiveTagViewData maybeSourceIndex maybeTargetIndex
+            case sourceTagId == targetTagId of
+                True ->
+                    maybeTargetTagViewData
+                        |> Result.andThen
+                            (\tagData ->
+                                Utils.findIndex
+                                    (\item -> item.itemId == sourceItemId)
+                                    tagData.items
+                                    ("Could not find an item with id " ++ sourceItemId)
+                            )
+                        |> Result.map3
+                            (\tagData targetIndex sourceIndex ->
+                                move sourceIndex 1 targetIndex tagData.items
+                            )
+                            maybeTargetTagViewData
+                            maybeTargetIndex
 
-        maybeNewPage =
-            maybeActiveTagViewData
-                |> Maybe.map2 (\newItems tagData -> { tagData | items = newItems }) maybeNewItems
-                |> Maybe.map (\newTagData -> setIf (\{ tagId } -> tagId == newTagData.tagId) newTagData sectionPageData.tags)
-                |> Maybe.map (\newTags -> SectionPage { sectionPageData | tags = newTags })
+                False ->
+                    Utils.find
+                        (\tagData -> tagData.tagId == sourceTagId)
+                        sectionPageData.tags
+                        ("Could not find a tag with id " ++ sourceTagId)
+                        |> Result.andThen
+                            (\{ items } ->
+                                Utils.find
+                                    (\{ itemId } -> itemId == sourceItemId)
+                                    items
+                                    ("Could not find an item with id " ++ sourceItemId)
+                            )
+                        |> Result.map (\item -> { item | isLoading = True })
+                        |> Result.map3
+                            (\tagData targetIndex item ->
+                                insert targetIndex tagData.items item
+                            )
+                            maybeTargetTagViewData
+                            maybeTargetIndex
     in
-    maybeNewPage
-
-move originalPositionIndex originalLength targetPositionIndex list =
-    let
-        _ = Debug.log "originalPositionIndex + originalLength" (originalPositionIndex + originalLength)
-        _ = Debug.log "(List.length list) + 1" ((List.length list))
-    in
-    if (originalPositionIndex < targetPositionIndex)
-        && ((originalPositionIndex + originalLength) > targetPositionIndex) then
-        list
-
-    else if (originalPositionIndex + originalLength) > (List.length list) || originalPositionIndex < 0 then
-        list
-
-    else if targetPositionIndex > (List.length list) || targetPositionIndex < 0 then
-        list
-
-    else
-    split [originalPositionIndex,(originalPositionIndex + originalLength), targetPositionIndex] list
-        |> debugLog "split"
-        |> (\acc ->
-            let _ = Debug.log "acc" acc
-            in
-            case acc of
-                [a,b,c,d] ->
-
-                    List.concat [a,c,b,d]
-                _ ->
-                     []
-        )
+    Result.map2 (\newItems tagData -> { tagData | items = newItems }) maybeNewItems maybeTargetTagViewData
+        |> Result.map (\newTagData -> setIf (\{ tagId } -> tagId == newTagData.tagId) newTagData sectionPageData.tags)
+        |> Result.map (\newTags -> SectionPage { sectionPageData | tags = newTags })
 
 
 
-split points list =
-    points
-        |> unique
-        |> List.sort
-        |> List.foldr
-            (\point ( rest, acc ) ->
-                splitAt point rest
-                    |> (\( nextRest, x ) -> ( nextRest, x :: acc ))
-            )
-            ( list, [] )
-        |> (\(last, acc) -> last::acc)
-
-
-insert dropTargetPosition itemIndex list item =
-    case dropTargetPosition of
-        Before ->
-            insertBefore list itemIndex item
-
-        After ->
-            insertAfter list itemIndex item
-
-
-insertBefore list itemIndex item =
-    case itemIndex of
-        0 ->
-            item :: list
-
-        _ ->
-            let
-                ( a, b ) =
-                    splitAt itemIndex list
-            in
-            List.concat [ a, [ item ], b ]
-
-
-insertAfter list itemIndex item =
-    if (itemIndex + 1) == List.length list then
-        List.append list [ item ]
-
-    else
-        let
-            ( a, b ) =
-                splitAt (itemIndex + 1) list
-        in
-        List.concat [ a, [ item ], b ]
 
 
 allFieldsPresent : Model -> Maybe ReadyModelData
@@ -458,16 +424,15 @@ menu sections =
             sections
 
 
-tagList : List TagViewData -> Maybe (tagId, ItemId) -> Maybe ( TagId, ItemId, DropTargetPosition ) -> List (Html Msg)
+tagList : List TagViewData -> Maybe ( tagId, ItemId ) -> Maybe ( TagId, ItemId, DropTargetPosition ) -> List (Html Msg)
 tagList tagData dnd maybeDragOver =
     List.map
         (\{ label, items, tagId } ->
             div [ class "tag" ]
                 [ text label
-                , lazy4 itemRow
+                , lazy3 itemRow
                     items
                     tagId
-                    dnd
                     (Maybe.andThen
                         (\( dndTagId, dndItemId, position ) ->
                             if dndTagId == tagId then
@@ -483,8 +448,8 @@ tagList tagData dnd maybeDragOver =
         tagData
 
 
-itemRow items tagId dnd maybeDndItemId =
-    node "div" [ class "items" ] (dropzoneItemList items tagId maybeDndItemId)
+itemRow items tagId maybeDnd =
+    node "div" [ class "items" ] (dropzoneItemList items tagId maybeDnd)
 
 
 dropzoneItemList items tagId maybeDndItemId =
@@ -500,10 +465,14 @@ dropzoneItemList items tagId maybeDndItemId =
 dropzoneItemView itemData tagId maybeDndItemId =
     div (class "item" :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart tagId itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
         [ div (class ("item-dropzone-left dropTarget" ++ isActive maybeDndItemId itemData.itemId Before) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId Before), onEnter = Just (DragEnter tagId itemData.itemId Before), onLeave = Just (DragLeave tagId itemData.itemId Before) }) []
-        , div [ class "item-internal dnd" ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+        , div [ class ("item-internal dnd " ++ isLoading itemData) ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
         , div (class ("item-dropzone-right dropTarget" ++ isActive maybeDndItemId itemData.itemId After) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId After), onEnter = Just (DragEnter tagId itemData.itemId After), onLeave = Just (DragLeave tagId itemData.itemId After) }) []
         ]
 
+isLoading itemData =
+    case itemData.isLoading of
+        True-> "loading"
+        False -> ""
 
 isActive maybeDndItemId itemId position =
     case maybeDndItemId of
@@ -518,16 +487,7 @@ isActive maybeDndItemId itemId position =
                 ""
 
 
-positionIsEqual x y =
-    case ( x, y ) of
-        ( Before, Before ) ->
-            True
 
-        ( After, After ) ->
-            True
-
-        _ ->
-            False
 
 
 itemList items =

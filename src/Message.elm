@@ -1,6 +1,6 @@
 module Message exposing (..)
 
-import AppData exposing (AppData, DropTargetPosition, ItemId, SectionId, TagId)
+import AppData exposing (AppData, DropTargetPosition, ItemData, ItemId, SectionId, TagId)
 import Browser
 import Browser.Dom exposing (Viewport)
 import Html.Events.Extra.Drag as Drag exposing (Event)

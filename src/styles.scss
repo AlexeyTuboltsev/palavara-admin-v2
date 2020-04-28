@@ -167,6 +167,10 @@ body {
   margin: 0;
 }
 
+.item-internal.loading {
+  opacity: 0.5;
+}
+
 .item-dropzone-left,
 .item-dropzone-right {
   opacity: 0.5;
