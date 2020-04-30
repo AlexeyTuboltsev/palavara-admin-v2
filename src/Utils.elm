@@ -70,7 +70,6 @@ positionIsEqual x y =
 
         ( After, After ) ->
             True
-
         _ ->
             False
 
