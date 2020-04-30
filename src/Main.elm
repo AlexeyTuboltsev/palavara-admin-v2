@@ -5,6 +5,7 @@ import Browser
 import Browser.Dom exposing (Viewport, getViewport, getViewportOf)
 import Browser.Events exposing (onResize)
 import Browser.Navigation as Navigation exposing (Key, load)
+import Dict exposing (..)
 import Html exposing (Html, a, br, div, img, span, text)
 import Html.Attributes exposing (alt, class, href, id, property, src, style)
 import Html.Events.Extra exposing (onClickPreventDefault)
@@ -14,12 +15,13 @@ import Html.Lazy exposing (lazy, lazy2, lazy3, lazy4)
 import Http exposing (expectJson, get)
 import Icons
 import List.Extra as LE exposing (find, findIndex, getAt, removeAt, setAt, setIf, splitAt, unique, updateAt)
+import Maybe.Extra as ME
 import Message exposing (Msg(..))
-import Page exposing (ItemViewData, Page(..), SectionPageData, TagViewData)
+import Page exposing (ItemViewData, Page(..), SectionPageData, TagViewData, UIData, View(..), generateMenuViewData, generateSectionViewData, sectionDataToSectionViewData)
 import Result exposing (Result)
 import Task
 import Url exposing (Url)
-import Utils exposing (find, findIndex, insert, move, positionIsEqual)
+import Utils exposing (convertData, find, findIndex, insert, move, positionIsEqual)
 
 
 type alias Flags =
@@ -37,15 +39,17 @@ type alias ReadyModelData =
     , page : Page
     , data : AppData
     , tempData : Maybe AppData
+    , dataNext : AppDataNext
     , dnd : Maybe ( TagId, ItemId )
+    , uiData: UIData
     }
-
 
 type alias InitModelData =
     { url : Url
     , dataUrl : String
     , key : Navigation.Key
     , data : Maybe AppData
+    , dataNext : Maybe AppDataNext
     }
 
 
@@ -71,8 +75,11 @@ update message model =
 
                         Ok data ->
                             let
+                                dataNext =
+                                    convertData data
+
                                 newModel =
-                                    InitModel { initModel | data = Just data }
+                                    InitModel { initModel | data = Just data, dataNext = Just dataNext }
                             in
                             case allFieldsPresent newModel of
                                 Just readyModelData ->
@@ -92,53 +99,17 @@ update message model =
         ReadyModel readyModelData ->
             case message of
                 SelectSection sectionId ->
-                    let
-                        sectionData =
-                            getSectionData readyModelData.data (\s -> ( s.sectionId, s.label ))
+                    let newUiData = (\uiData -> {uiData | view = Section sectionId}) readyModelData.uiData
+                        newModel = ReadyModel {readyModelData | uiData = newUiData}
 
-                        maybeNewModel =
-                            Utils.find
-                                (\section ->
-                                    case section of
-                                        GalleryWithTagsSectionType sd ->
-                                            sd.sectionId == sectionId
+                    in update GeneratePage newModel
 
-                                        _ ->
-                                            False
-                                )
-                                readyModelData.data
-                                ("Could not find a section with id " ++ sectionId)
-                                |> Result.andThen
-                                    (\s ->
-                                        case s of
-                                            GalleryWithTagsSectionType sd ->
-                                                let
-                                                    generateItemViewData itemData =
-                                                        ItemViewData itemData.itemId itemData.fileName itemData.urlString (readyModelData.apiUrl ++ itemData.fileName) False
-
-                                                    generateTagViewData tagData =
-                                                        TagViewData tagData.label tagData.tagId (List.map generateItemViewData tagData.items)
-
-                                                    tags =
-                                                        List.map generateTagViewData sd.tags
-
-                                                    items =
-                                                        List.map generateItemViewData sd.items
-                                                in
-                                                Ok ( tags, items )
-
-                                            _ ->
-                                                Err ("Wrong section type for section with id " ++ sectionId)
-                                    )
-                                |> Result.map (\( tags, items ) -> SectionPage { activeSectionId = sectionId, sections = sectionData, tags = tags, items = items, dnd = readyModelData.dnd, dragOver = Nothing })
-                                |> Result.map (\page -> { readyModelData | page = page })
-                    in
-                    case maybeNewModel of
-                        Ok nm ->
-                            ( ReadyModel nm, Cmd.none )
-
-                        Err errMessage ->
-                            ( ReadyModel readyModelData, Cmd.none )
+                GeneratePage ->
+                    generateSectionViewData readyModelData.dataNext readyModelData.uiData
+                        |> Maybe.map (\page -> { readyModelData | page = page })
+                        |> Maybe.map (\newModel -> ( ReadyModel newModel, Cmd.none ))
+                        |> Maybe.withDefault
+                                ( ReadyModel readyModelData, Cmd.none )
 
                 DragStart tagId itemId _ _ ->
                     let
@@ -226,19 +197,18 @@ update message model =
                                         |> Result.andThen (\( sourceTagId, sourceItemId ) -> dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData readyModelData.data)
                             in
                             case maybeNewAppDataAndPage of
-                                Ok (tempAppData,page) ->
+                                Ok ( tempAppData, page ) ->
                                     let
                                         appDataStringified =
                                             encodeAppData tempAppData
-                                            |> debugLog "json:"
+                                                |> debugLog "json:"
 
                                         saveToApi =
                                             Http.post
-                                                {url = "bla"
+                                                { url = "bla"
                                                 , body = Http.jsonBody appDataStringified
                                                 , expect = expectJson SetData appDataDecoder
                                                 }
-
                                     in
                                     ( ReadyModel { readyModelData | page = page, tempData = Just tempAppData, dnd = Nothing }, saveToApi )
 
@@ -247,6 +217,7 @@ update message model =
 
                         InitialPage _ ->
                             ( ReadyModel readyModelData, Cmd.none )
+
                 SetData result ->
                     case result of
                         Err err ->
@@ -254,6 +225,7 @@ update message model =
 
                         Ok data ->
                             ( ReadyModel readyModelData, Cmd.none )
+
                 UrlChanged url ->
                     ( ReadyModel readyModelData, Cmd.none )
 
@@ -261,7 +233,8 @@ update message model =
                     ( model, Cmd.none )
 
 
-dndMove : TagId -> ItemId -> TagId -> ItemId -> DropTargetPosition -> SectionPageData -> AppData -> Result String (AppData,Page)
+
+dndMove : TagId -> ItemId -> TagId -> ItemId -> DropTargetPosition -> SectionPageData -> AppData -> Result String ( AppData, Page )
 dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sectionPageData appData =
     let
         maybeSectionIndex =
@@ -283,7 +256,6 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                     (\i ->
                         getAt i appData
                             |> Result.fromMaybe ("Could not find section with id " ++ sectionPageData.activeSectionId ++ " in appData")
-
                     )
                 |> Result.andThen
                     (\section ->
@@ -359,10 +331,10 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                                     (\item -> item.itemId == sourceItemId)
                                     tagData.items
                                     ("Could not find an item with id " ++ sourceItemId)
-                                |> Result.map (\i -> (updateAt i (\item -> { item | isLoading = True }) tagData.items,i))
+                                    |> Result.map (\i -> ( updateAt i (\item -> { item | isLoading = True }) tagData.items, i ))
                             )
                         |> Result.map2
-                            (\targetIndex (items,sourceIndex) ->
+                            (\targetIndex ( items, sourceIndex ) ->
                                 move sourceIndex 1 targetIndex items
                             )
                             maybeTargetViewIndex
@@ -382,7 +354,7 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                         |> Result.map (\item -> { item | isLoading = True })
                         |> Result.map3
                             (\tagData targetIndex item ->
-                                insert targetIndex tagData.items item
+                                Utils.insert targetIndex tagData.items item
                             )
                             maybeTargetTagViewData
                             maybeTargetViewIndex
@@ -408,7 +380,7 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                 False ->
                     maybeSectionData
                         |> Result.andThen
-                            (\{tags} ->
+                            (\{ tags } ->
                                 Utils.find
                                     (\tagData -> tagData.tagId == sourceTagId)
                                     tags
@@ -423,59 +395,41 @@ dndMove sourceTagId sourceItemId targetTagId targetItemId dropTargetPosition sec
                             )
                         |> Result.map3
                             (\tagData targetIndex item ->
-                                insert targetIndex tagData.items item
+                                Utils.insert targetIndex tagData.items item
                             )
                             maybeTargetTagData
                             maybeTargetIndex
 
         maybeAppData =
-            Result.map2 (\tag items -> {tag | items = items}) maybeTargetTagData maybeNewItems
+            Result.map2 (\tag items -> { tag | items = items }) maybeTargetTagData maybeNewItems
                 |> Result.map2 (\sectionData newTag -> setIf (\tag -> newTag.tagId == tag.tagId) newTag sectionData.tags) maybeSectionData
-                |> Result.map2 (\sectionData newTags -> {sectionData| tags = newTags}) maybeSectionData
+                |> Result.map2 (\sectionData newTags -> { sectionData | tags = newTags }) maybeSectionData
                 |> Result.map (\sectionData -> GalleryWithTagsSectionType sectionData)
-                |> Result.map2 (\i section -> (i,section)) maybeSectionIndex
-                |> Result.map (\(i,section) -> setAt i section appData)
-        maybeNewPage =
-                Result.map2 (\newItems tagData -> { tagData | items = newItems }) maybeNewViewItems maybeTargetTagViewData
-                    |> Result.map (\newTagData -> setIf (\{ tagId } -> tagId == newTagData.tagId) newTagData sectionPageData.tags)
-                    |> Result.map (\newTags -> SectionPage { sectionPageData | tags = newTags })
-    in
-    Result.map2 (\newAppData newPage -> (newAppData, newPage)) maybeAppData maybeNewPage
+                |> Result.map2 (\i section -> ( i, section )) maybeSectionIndex
+                |> Result.map (\( i, section ) -> setAt i section appData)
 
+        maybeNewPage =
+            Result.map2 (\newItems tagData -> { tagData | items = newItems }) maybeNewViewItems maybeTargetTagViewData
+                |> Result.map (\newTagData -> setIf (\{ tagId } -> tagId == newTagData.tagId) newTagData sectionPageData.tags)
+                |> Result.map (\newTags -> SectionPage { sectionPageData | tags = newTags })
+    in
+    Result.map2 (\newAppData newPage -> ( newAppData, newPage )) maybeAppData maybeNewPage
 
 
 allFieldsPresent : Model -> Maybe ReadyModelData
 allFieldsPresent newModel =
     case newModel of
         InitModel data ->
-            Maybe.map
-                (\d ->
-                    let
-                        page =
-                            getSectionData d (\s -> ( s.sectionId, s.label ))
-                                |> Page.InitialPageData
-                                |> InitialPage
-                    in
-                    { data = d, tempData = Nothing, apiUrl = data.dataUrl, key = data.key, page = page, dnd = Nothing }
-                )
-                data.data
+            data.dataNext
+                |> Maybe.andThen
+                    (\d -> generateMenuViewData d sectionDataToSectionViewData)
+                |> Maybe.map
+                    (\sections -> Page.InitialPageData sections)
+                |> Maybe.map (\s -> InitialPage s)
+                |> Maybe.map3 (\d dn page -> { uiData = {view = Initial},data = d, tempData = Nothing, apiUrl = data.dataUrl, key = data.key, page = page, dnd = Nothing, dataNext = dn }) data.data data.dataNext
 
         _ ->
             Nothing
-
-
-getSectionData appData convertFn =
-    List.filterMap
-        (\section ->
-            case section of
-                GalleryWithTagsSectionType s ->
-                    Just (convertFn s)
-
-                _ ->
-                    Nothing
-        )
-        appData
-
 
 
 -- MAIN --
@@ -502,9 +456,9 @@ init { apiBaseUrl, dataPath, imagePath, apiPort, apiProtocol } url key =
                 ++ apiPort
                 ++ "/"
     in
-    ( InitModel (InitModelData url (baseUrl ++ imagePath ++ "/") key Nothing)
+    ( InitModel (InitModelData url (baseUrl ++ imagePath ++ "/") key Nothing Nothing)
     , Cmd.batch
-        [ get
+        [ Http.get
             { url = baseUrl ++ dataPath
             , expect = expectJson SetData appDataDecoder
             }
@@ -617,7 +571,7 @@ dropzoneItemList items tagId maybeDndItemId =
 dropzoneItemView itemData tagId maybeDndItemId =
     div (class "item" :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart tagId itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
         [ div (class ("item-dropzone-left dropTarget" ++ isActive maybeDndItemId itemData.itemId Before) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId Before), onEnter = Just (DragEnter tagId itemData.itemId Before), onLeave = Just (DragLeave tagId itemData.itemId Before) }) []
-        , div [ class ("item-internal dnd " ++ isLoading itemData) ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+        , div [ class ("item-internal dnd " ++ isLoading itemData), id itemData.itemId ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
         , div (class ("item-dropzone-right dropTarget" ++ isActive maybeDndItemId itemData.itemId After) :: onDropTarget { dropEffect = MoveOnDrop, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId After), onEnter = Just (DragEnter tagId itemData.itemId After), onLeave = Just (DragLeave tagId itemData.itemId After) }) []
         ]
 

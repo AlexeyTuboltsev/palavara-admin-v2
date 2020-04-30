@@ -15,6 +15,7 @@ type Msg
     | SetData (Result Http.Error AppData)
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url
+    | GeneratePage
     | SelectSection SectionId
     | Drop TagId ItemId DropTargetPosition
     | DragStart TagId ItemId Drag.EffectAllowed Value

@@ -1,6 +1,7 @@
-module Utils exposing (insert,move, split, find, findIndex,positionIsEqual)
+module Utils exposing (insert,move, split, find, findIndex,positionIsEqual, convertData)
 
-import AppData exposing (DropTargetPosition(..))
+import AppData exposing (AppData, AppDataNext, DropTargetPosition(..), SectionData(..), SectionDataNext(..))
+import Dict
 import List.Extra as LE
 
 insert targetIndex list item =
@@ -72,3 +73,102 @@ positionIsEqual x y =
 
         _ ->
             False
+
+
+convertData : AppData -> AppDataNext
+convertData data =
+    let
+        newAcc =
+            { sections = Dict.empty
+            , orderLists = Dict.singleton "sections" []
+            , tags = Dict.empty
+            , items = Dict.empty
+            }
+    in
+    List.foldr
+        (\section acc ->
+            case section of
+                GalleryWithTagsSectionType sectionData ->
+                    let
+                        id =
+                            sectionData.sectionId
+
+                        itemOrderId =
+                            sectionData.sectionId ++ "_items"
+
+                        tagOrderId =
+                            sectionData.sectionId ++ "_tags"
+
+                        sectionItems =
+                            List.map (\{ itemId, fileName, urlString } -> ( itemId, AppData.ItemDataNext itemId fileName urlString [ itemOrderId ] )) sectionData.items
+                                |> Dict.fromList
+
+                        sectionItemOrder =
+                            [ ( itemOrderId, List.map (\{ itemId } -> itemId) sectionData.items ) ]
+                                |> Dict.fromList
+
+                        sectionTags =
+                            List.map (\{ tagId, label, items } -> ( tagId, AppData.TagDataNext tagId label (itemOrderId ++ "_" ++ tagId) [ tagOrderId ] )) sectionData.tags
+                                |> Dict.fromList
+
+                        sectionTagOrder =
+                            [ ( tagOrderId, List.map (\{ tagId } -> tagId) sectionData.tags ) ]
+                                |> Dict.fromList
+
+                        tagItemOrders =
+                            List.map (\tag -> ( itemOrderId ++ "_" ++ tag.tagId, List.map (\{ itemId } -> itemId) tag.items )) sectionData.tags
+                                |> Dict.fromList
+
+                        itemsWithTagUsage =
+                            List.foldl
+                                (\tag acc1 ->
+                                    List.foldl
+                                        (\{ itemId } acc2 ->
+                                            Dict.update itemId
+                                                (Maybe.map (\item -> { item | usedIn = (itemOrderId ++ "_" ++ tag.tagId) :: item.usedIn }))
+                                                acc2
+                                        )
+                                        acc1
+                                        tag.items
+                                )
+                                sectionItems
+                                sectionData.tags
+
+                        orderLists =
+                            Dict.update "sections"
+                                (\maybeList ->
+                                    case maybeList of
+                                        Just sectionOrder ->
+                                            Just (sectionData.sectionId :: sectionOrder)
+
+                                        Nothing ->
+                                            Nothing
+                                )
+                                acc.orderLists
+                                |> Dict.union sectionOrderLists
+
+                        sectionOrderLists =
+                            Dict.union sectionItemOrder tagItemOrders
+                                |> Dict.union sectionTagOrder
+
+                        sectionNext =
+                            { sectionId = sectionData.sectionId
+                            , label = sectionData.label
+                            , tagOrderId = tagOrderId
+                            , itemOrderId = itemOrderId
+                            , usedIn = [ "sections" ]
+                            }
+                                |> GalleryWithTagsSectionNext
+                    in
+                    { acc
+                        | items = Dict.union itemsWithTagUsage acc.items
+                        , tags = Dict.union sectionTags acc.tags
+                        , orderLists = orderLists
+                        , sections = Dict.insert sectionData.sectionId sectionNext acc.sections
+                    }
+
+                _ ->
+                    acc
+        )
+        newAcc
+        data

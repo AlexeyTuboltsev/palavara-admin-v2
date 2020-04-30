@@ -1,5 +1,6 @@
 module AppData exposing (..)
 
+import Dict exposing (Dict)
 import Json.Decode as JD
 import Json.Encode as JE
 
@@ -47,8 +48,8 @@ type alias GalleryWithTagsSectionData =
 type alias InfoSectionData =
     { label : String
     , sectionId : SectionId
-    , text: String
-    , imageId: String
+    , text : String
+    , imageId : String
     }
 
 
@@ -62,9 +63,69 @@ type alias AppData =
     List SectionData
 
 
-type DropTargetPosition =
-    Before
+type alias OrderListId =
+    String
+
+
+type alias ItemDataNext =
+    { itemId : ItemId
+    , fileName : String
+    , urlString : String
+    , usedIn : List OrderListId
+    }
+
+
+type alias TagDataNext =
+    { tagId : TagId
+    , label : String
+    , itemOrderId : OrderListId
+    , usedIn : List OrderListId
+    }
+
+
+type alias GalleryWithTagsSectionDataNext =
+    { sectionId : SectionId
+    , label : String
+    , tagOrderId : OrderListId
+    , itemOrderId : OrderListId
+    , usedIn : List OrderListId
+    }
+
+
+type alias GallerySectionDataNext =
+    { sectionId : String
+    , label : String
+    }
+
+
+type alias InfoSectionDataNext =
+    { sectionId : String
+    , label : String
+    , text : String
+    , imageId : String
+    }
+
+
+type SectionDataNext
+    = GalleryWithTagsSectionNext GalleryWithTagsSectionDataNext
+    | GallerySectionNext GallerySectionDataNext
+    | InfoSectionNext InfoSectionDataNext
+
+
+type alias AppDataNext =
+    { sections : Dict SectionId SectionDataNext
+    , orderLists : Dict OrderListId (List String)
+    , tags : Dict String TagDataNext
+    , items : Dict ItemId ItemDataNext
+    }
+
+
+type DropTargetPosition
+    = Before
     | After
+
+
+
 -- JSON --
 
 
@@ -125,32 +186,40 @@ sectionDataDecoder =
                         JD.fail "no luck today"
             )
 
+----- Encoders ---------------
 encodeAppData appData =
     JE.list sectionEncoder appData
+
 
 sectionEncoder section =
     case section of
         GalleryWithTagsSectionType data ->
             JE.object
-                [ ("label", JE.string data.label)
-                , ("sectionId", JE.string data.sectionId)
-                , ("items", JE.list itemEncoder data.items)
-                , ("tags", JE.list tagEncoder data.tags)
+                [ ( "label", JE.string data.label )
+                , ( "sectionId", JE.string data.sectionId )
+                , ( "items", JE.list itemEncoder data.items )
+                , ( "tags", JE.list tagEncoder data.tags )
                 ]
 
         _ ->
-            JE.object [] --todo
+            JE.object []
+
+
+
+--todo
+
 
 tagEncoder tag =
     JE.object
-        [("label", JE.string tag.label)
-        ,("tagId", JE.string tag.tagId)
-        ,("items", JE.list itemEncoder tag.items)
+        [ ( "label", JE.string tag.label )
+        , ( "tagId", JE.string tag.tagId )
+        , ( "items", JE.list itemEncoder tag.items )
         ]
+
 
 itemEncoder item =
     JE.object
-        [("itemId", JE.string item.itemId)
-        , ("fileName", JE.string item.fileName)
-        , ("urlString", JE.string item.urlString)
+        [ ( "itemId", JE.string item.itemId )
+        , ( "fileName", JE.string item.fileName )
+        , ( "urlString", JE.string item.urlString )
         ]
