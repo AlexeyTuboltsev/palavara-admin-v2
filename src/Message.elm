@@ -19,7 +19,7 @@ type Msg
     | SelectSection SectionId
     | Drop TagId ItemId DropTargetPosition
     | DragStart TagId ItemId Drag.EffectAllowed Value
-    | DragOver TagId ItemId DropTargetPosition Drag.DropEffect Value
+    | DragOver Drag.DropEffect Value
     | DragEnter TagId ItemId DropTargetPosition Event
     | DragLeave TagId ItemId DropTargetPosition Event
     | DragEnd TagId ItemId Event

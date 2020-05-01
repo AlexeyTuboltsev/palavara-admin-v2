@@ -4,14 +4,19 @@ import AppData exposing (AppDataNext, DropTargetPosition(..), GalleryWithTagsSec
 import Dict exposing (Dict)
 import Maybe.Extra as ME
 
-type View = Initial | Section SectionId
+
+type View
+    = Initial
+    | Section SectionId
+
 
 type alias UIData =
-    { view: View
-    , imageUrl: String
-    , dnd: Maybe ( TagId, ItemId )
-    , dragOver: Maybe ( TagId, ItemId, DropTargetPosition )
+    { view : View
+    , imageUrl : String
+    , dnd : Maybe ( TagId, ItemId )
+    , dragOver : Maybe ( TagId, ItemId, DropTargetPosition )
     }
+
 
 type Page
     = SectionPage SectionPageData
@@ -38,8 +43,8 @@ type alias ItemViewData =
     , fileName : String
     , urlString : String
     , src : String
-    , isLoading : Bool
-    , dndOnOver: Maybe DropTargetPosition
+    , isDnD : Bool
+    , dndOnOver : Maybe DropTargetPosition
     }
 
 
@@ -56,24 +61,39 @@ generateItemViewData items uiData itemId =
         |> Maybe.map
             (\{ fileName, urlString } ->
                 let
-                    maybeDragOver = case uiData.dragOver of
-                        Just (_, id, position) ->
-                            case id == itemId of
-                                True -> Just position
-                                False -> Nothing
-                        Nothing -> Nothing
+                    maybeDragOver =
+                        case uiData.dragOver of
+                            Just ( _, id, position ) ->
+                                case id == itemId of
+                                    True ->
+                                        Just position
+
+                                    False ->
+                                        Nothing
+
+                            Nothing ->
+                                Nothing
+
+                    isDnD =
+                            (case uiData.dnd of
+                                Just ( _, id ) ->
+                                    id == itemId
+
+                                Nothing ->
+                                    False
+                            )
                 in
                 { itemId = itemId
                 , fileName = fileName
                 , urlString = urlString
                 , src = uiData.imageUrl ++ fileName
-                , isLoading = False
+                , isDnD = isDnD
                 , dndOnOver = maybeDragOver
                 }
             )
 
 
-generateItemListViewData : AppDataNext -> UIData ->String -> Maybe (List ItemViewData)
+generateItemListViewData : AppDataNext -> UIData -> String -> Maybe (List ItemViewData)
 generateItemListViewData appDataNext uiData itemOrderId =
     Dict.get itemOrderId appDataNext.orderLists
         |> Maybe.map (\itemOrderList -> List.map (generateItemViewData appDataNext.items uiData) itemOrderList)
@@ -173,21 +193,25 @@ sectionDataToSectionViewData section =
         InfoSectionNext sectionData ->
             ( sectionData.sectionId, sectionData.label )
 
+
 setActiveSection uiData sectionId =
     { uiData | view = Section sectionId }
 
+
 startDnD uiData tagId itemId =
-    { uiData | dnd = Just (tagId,itemId) }
+    { uiData | dnd = Just ( tagId, itemId ) }
+
 
 stopDnD uiData =
     { uiData | dnd = Nothing }
 
+
 addDragOver uiData tagId itemId dropTargetPosition =
-    { uiData | dragOver = Just (tagId,itemId, dropTargetPosition) }
+    { uiData | dragOver = Just ( tagId, itemId, dropTargetPosition ) }
+
 
 removeDragOver uiData =
     { uiData | dragOver = Nothing }
-
 
 
 debugLog s x =
