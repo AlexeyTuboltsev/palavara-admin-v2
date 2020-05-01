@@ -1,4 +1,4 @@
-module Utils exposing (insert,move, split, find, findIndex,positionIsEqual, convertData)
+module Utils exposing (insert,move, split, find, findIndex,positionIsEqual, convertData, findInsertionIndex)
 
 import AppData exposing (AppData, AppDataNext, DropTargetPosition(..), SectionData(..), SectionDataNext(..))
 import Dict
@@ -62,6 +62,18 @@ findIndex predicate list errMessage =
 find predicate list errMessage =
     LE.find predicate list
         |> Result.fromMaybe errMessage
+
+findInsertionIndex itemOrderList targetItemId dropTargetPosition =
+        LE.findIndex (\id -> targetItemId == id) itemOrderList
+            |> Maybe.map
+                (\i ->
+                    case dropTargetPosition of
+                        Before ->
+                            i
+
+                        After ->
+                            i + 1
+                )
 
 positionIsEqual x y =
     case ( x, y ) of

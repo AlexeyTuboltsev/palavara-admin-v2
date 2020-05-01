@@ -127,7 +127,9 @@ update message model =
                         |> update GeneratePageData
 
                 DragEnd _ _ _ ->
-                    let _ = Debug.log "dragEnd"
+                    let
+                        _ =
+                            Debug.log "dragEnd"
                     in
                     ReadyModel { readyModelData | uiData = readyModelData.uiData |> removeDragOver |> stopDnD }
                         |> update GeneratePageData
@@ -147,46 +149,47 @@ update message model =
                                 |> Maybe.map2 (\( sourceTagId, sourceItemId ) itemOrderList -> ( sourceTagId, sourceItemId, itemOrderList )) readyModelData.uiData.dnd
                                 |> Maybe.andThen
                                     (\( sourceTagId, sourceItemId, itemOrderList ) ->
-                                        let
-                                            maybeTargetItemIndex =
-                                                LE.findIndex (\id -> targetItemId == id) itemOrderList
-                                                    |> Maybe.map
-                                                        (\i ->
-                                                            case dropTargetPosition of
-                                                                Before ->
-                                                                    i
-
-                                                                After ->
-                                                                    i + 1
-                                                        )
-                                        in
                                         case sourceTagId == targetTagId of
                                             True ->
                                                 let
                                                     maybeSourceItemIndex =
                                                         LE.findIndex (\id -> sourceItemId == id) itemOrderList
+
+                                                    maybeTargetItemIndex =
+                                                        Utils.findInsertionIndex itemOrderList targetItemId dropTargetPosition
                                                 in
                                                 Maybe.map2 (\sourceItemIndex targetItemIndex -> move sourceItemIndex 1 targetItemIndex itemOrderList) maybeSourceItemIndex maybeTargetItemIndex
 
                                             False ->
-                                                Maybe.map (\targetItemIndex -> Utils.insert targetItemIndex itemOrderList sourceItemId) maybeTargetItemIndex
+                                                let
+                                                    filteredOrderList =
+                                                        LE.remove sourceItemId itemOrderList
+                                                    maybeTargetItemIndex =
+                                                        Utils.findInsertionIndex filteredOrderList targetItemId dropTargetPosition
+                                                in
+                                                Maybe.map (\targetItemIndex -> Utils.insert targetItemIndex filteredOrderList sourceItemId) maybeTargetItemIndex
                                     )
-                                    |> Maybe.map2 (\itemOrderListId newItemOrderList->
-                                            Dict.update itemOrderListId (\_ -> Just newItemOrderList) readyModelData.dataNext.orderLists
-                                    ) maybeItemOrderListId
-                                    |> Maybe.map (\orderLists ->
-                                        let dataNext = readyModelData.dataNext
-
-                                        in {dataNext | orderLists = orderLists}
+                                |> Maybe.map2
+                                    (\itemOrderListId newItemOrderList ->
+                                        Dict.update itemOrderListId (\_ -> Just newItemOrderList) readyModelData.dataNext.orderLists
+                                    )
+                                    maybeItemOrderListId
+                                |> Maybe.map
+                                    (\orderLists ->
+                                        let
+                                            dataNext =
+                                                readyModelData.dataNext
+                                        in
+                                        { dataNext | orderLists = orderLists }
                                     )
                     in
-                        case maybeDataNext of
-                            Just dn ->
-                                ReadyModel {readyModelData | uiData = newUiData, dataNext = dn }
+                    case maybeDataNext of
+                        Just dn ->
+                            ReadyModel { readyModelData | uiData = newUiData, dataNext = dn }
                                 |> update GeneratePageData
-                            Nothing ->
-                                (ReadyModel readyModelData, Cmd.none)
 
+                        Nothing ->
+                            ( ReadyModel readyModelData, Cmd.none )
 
                 SetData result ->
                     case result of
@@ -351,24 +354,31 @@ dropzoneItemList items tagId =
 
 
 dropzoneItemView itemData tagId =
-    div (class ("item"  ++ isDnD itemData) :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart tagId itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
-                [ dropzoneLeft itemData tagId
-                , div [ class ("item-internal dnd" ++ isDnD itemData), id itemData.itemId ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
-                , dropzoneRight itemData tagId
-                ]
+    div (class ("item" ++ isDnD itemData) :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart tagId itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
+        [ dropzoneLeft itemData tagId
+        , div [ class ("item-internal dnd" ++ isDnD itemData), id itemData.itemId ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+        , dropzoneRight itemData tagId
+        ]
+
 
 dropzoneLeft itemData tagId =
     div (class ("item-dropzone-left dropTarget" ++ isActive Before itemData) :: onDropTarget { dropEffect = NoDropEffect, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId Before), onEnter = Just (DragEnter tagId itemData.itemId Before), onLeave = Just (DragLeave tagId itemData.itemId Before) })
-        [div [class "dropzone-internal"] []]
+        [ div [ class "dropzone-internal" ] [] ]
+
 
 dropzoneRight itemData tagId =
     div (class ("item-dropzone-right dropTarget" ++ isActive After itemData) :: onDropTarget { dropEffect = NoDropEffect, onOver = DragOver, onDrop = always (Drop tagId itemData.itemId After), onEnter = Just (DragEnter tagId itemData.itemId After), onLeave = Just (DragLeave tagId itemData.itemId After) })
-        [div [class "dropzone-internal"] []]
+        [ div [ class "dropzone-internal" ] [] ]
+
 
 isDnD itemData =
     case itemData.isDnD of
-        True -> " dnd-active"
-        False -> ""
+        True ->
+            " dnd-active"
+
+        False ->
+            ""
+
 
 isActive dropTargetPosition itemData =
     if itemData.isDnD == False then
@@ -383,8 +393,9 @@ isActive dropTargetPosition itemData =
 
             Nothing ->
                 ""
+
     else
-    ""
+        ""
 
 
 itemList items =
