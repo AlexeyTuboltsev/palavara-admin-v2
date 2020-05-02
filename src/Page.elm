@@ -10,11 +10,16 @@ type View
     | Section SectionId
 
 
+type Modal =
+    Closed
+    | ConfirmDeleteItem TagId ItemId
+
 type alias UIData =
     { view : View
     , imageUrl : String
     , dnd : Maybe ( TagId, ItemId )
     , dragOver : Maybe ( TagId, ItemId, DropTargetPosition )
+    , modal: Modal
     }
 
 

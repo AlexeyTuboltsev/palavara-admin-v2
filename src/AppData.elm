@@ -3,6 +3,7 @@ module AppData exposing (..)
 import Dict exposing (Dict)
 import Json.Decode as JD
 import Json.Encode as JE
+import List.Extra as LE
 
 
 type alias SectionId =
@@ -222,3 +223,37 @@ itemEncoder item =
         , ( "fileName", JE.string item.fileName )
         , ( "urlString", JE.string item.urlString )
         ]
+
+
+-- updates
+setItemOrderList: AppDataNext -> Maybe (List String) -> Maybe OrderListId -> Maybe AppDataNext
+setItemOrderList dataNext maybeNewItemOrderList maybeItemOrderListId =
+    Maybe.map2
+        (\itemOrderListId newItemOrderList ->
+            Dict.update itemOrderListId (\_ -> Just newItemOrderList) dataNext.orderLists
+        )
+        maybeItemOrderListId maybeNewItemOrderList
+    |> Maybe.map
+        (\orderLists ->
+            { dataNext | orderLists = orderLists }
+        )
+
+updateItemList dataNext tagId itemId fn =
+    let
+        maybeItemOrderListId =
+            Dict.get tagId dataNext.tags
+                |> Maybe.map (\tag -> tag.itemOrderId)
+
+        maybeItemOrderList =
+            maybeItemOrderListId
+                |> Maybe.andThen (\itemOrderId -> Dict.get itemOrderId dataNext.orderLists)
+
+        maybeItemIndex =
+            maybeItemOrderList
+                |> Maybe.andThen (\itemOrderList -> LE.findIndex (\i -> i == itemId ) itemOrderList)
+
+        maybeNewItemOrderList = Maybe.map2
+            fn maybeItemIndex maybeItemOrderList
+
+    in
+        setItemOrderList dataNext maybeNewItemOrderList maybeItemOrderListId

@@ -23,3 +23,11 @@ type Msg
     | DragEnter TagId ItemId DropTargetPosition Event
     | DragLeave TagId ItemId DropTargetPosition Event
     | DragEnd TagId ItemId Event
+    | MoveItemLeft TagId ItemId
+    | MoveItemRight TagId ItemId
+    | EditItem ItemId
+    | DeleteItem TagId ItemId
+    | AskToDeleteItem TagId ItemId
+    | ConfirmDeleteItemFromTag TagId ItemId
+    | ConfirmGlobalDeleteItem ItemId
+    | CancelDeleteItem

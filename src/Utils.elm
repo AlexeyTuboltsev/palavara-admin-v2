@@ -1,7 +1,8 @@
-module Utils exposing (insert,move, split, find, findIndex,positionIsEqual, convertData, findInsertionIndex)
+module Utils exposing (insert,move, split, find, findIndex,positionIsEqual, convertData, findInsertionIndex, emptyHtml)
 
 import AppData exposing (AppData, AppDataNext, DropTargetPosition(..), SectionData(..), SectionDataNext(..))
 import Dict
+import Html
 import List.Extra as LE
 
 insert targetIndex list item =
@@ -183,3 +184,6 @@ convertData data =
         )
         newAcc
         data
+
+emptyHtml =
+    Html.text ""

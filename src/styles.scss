@@ -5,7 +5,7 @@ $line-height: 144%;
 
 $color-canvas: #ffffff;
 $color-black: #000000;
-$color-light-gray: #f5f6f6;
+$color-light-gray: #d7d7d7;
 $color-gray: #868788;
 $color-blue: #000045;
 $color-yellow: #ffff00;
@@ -18,6 +18,9 @@ $margin-small: 1.4rem;
 $start-background-image: "https://data.palavara.com/img/0.jpg";
 $logo-label-height: 1.45rem;
 $text-size: 1.45rem;
+
+$dropzone-width: 0.5rem;
+$item-width: 7rem;
 
 :root {
   --image-height: calc((100vh) * 0.6);
@@ -61,8 +64,9 @@ html {
 }
 
 body {
+  position: relative;
   height: 100vh;
-  padding: 2rem;
+  width: 100vw;
 }
 
 .loader {
@@ -106,6 +110,7 @@ body {
   grid-template: 10rem 1fr 10rem / auto 1fr;
   grid-column-gap: 2rem;
   justify-items: flex-start;
+  padding: 2rem;
 }
 
 .menu {
@@ -122,8 +127,7 @@ body {
   grid-column: 2;
 }
 
-$dropzone-width: 0.5rem;
-$item-width:7rem;
+
 .items {
   display: flex;
   flex-flow: row;
@@ -131,47 +135,113 @@ $item-width:7rem;
 }
 
 .item {
-  position: relative;
   display: flex;
   flex-flow: row nowrap;
-  min-width: $item-width;
+  justify-content: space-between;
+
+  min-width: calc(#{$item-width} + 2 * #{$dropzone-width});
   height: $item-width;
   justify-self: flex-start;
+
+}
+
+.item-internal-wrapper {
+  position: relative;
+
+  width: $item-width;
+  height: $item-width;
 }
 
 .item-internal {
-  background-color: #a5a5a5;
-  margin: 0 #{$dropzone-width};
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  background-color: $color-canvas;
+  margin: 0;
   width: $item-width;
   height: $item-width;
   pointer-events: none;
+  border: 1px solid $color-light-gray;
 
   img {
     width: 100%;
     height: 100%;
+    object-fit: contain;
     pointer-events: none;
+  }
+
+  .item-button {
+    display: none;
   }
 }
 
-.item-internal.dnd {
-  margin: 0;
+.item:hover {
+  .item-internal {
+    z-index: 3;
+    width: calc(#{$item-width} + 2rem);
+    height: calc(#{$item-width} + 4rem);
+
+    border: 1px solid $color-gray;
+
+    display: grid;
+    grid-template: 2.5rem 1fr 2.5rem / repeat(4,1fr);
+    grid-template-areas: "upper-left upper-left  upper-right upper-right" "image image image image" "bottom-left  bottom-left bottom-right bottom-right";
+    justify-items: center;
+    align-items: center;
+    pointer-events: auto;
+    transition: width 0.3s, height 0.3s;
+
+    img {
+      grid-area: image;
+      width: 100%;
+      height: 100%;
+    }
+
+    .item-button {
+      display: block;
+      min-width: 1rem;
+      min-height: 1rem;
+      background-color: $color-light-gray;
+      cursor: pointer;
+    }
+
+    .upper-left {
+      grid-area: upper-left;
+    }
+
+    .upper-middle {
+      grid-area: upper-middle;
+    }
+
+    .upper-right {
+      grid-area: upper-right;
+    }
+
+    .bottom-left {
+      grid-area: bottom-left;
+    }
+
+    .bottom-right {
+      grid-area: bottom-right;
+    }
+
+  }
 }
 
-.item-internal.loading {
-  opacity: 0.5;
-}
 
 .item-dropzone-left,
 .item-dropzone-right {
   opacity: 0.5;
   height: $item-width;
   width: $dropzone-width;
-  transition: width 0.5s;
+  transition: width 0.1s;
 }
 
 .item-dropzone-left.dropTarget.active,
 .item-dropzone-right.dropTarget.active {
-    width: auto;
+  width: calc(#{$item-width} + 3 * #{$dropzone-width});
 
   .dropzone-internal {
     height: 100%;
@@ -182,14 +252,68 @@ $item-width:7rem;
 }
 
 .item-dropzone-left.dropTarget.active {
-  padding: 0 calc(#{$dropzone-width} *2) 0 #{$dropzone-width};
+  padding: 0 calc(#{$dropzone-width} * 2) 0 #{$dropzone-width};
 
 }
+
 .item-dropzone-right.dropTarget.active {
-  padding: 0 #{$dropzone-width} 0 calc(#{$dropzone-width} *2);
+  padding: 0 #{$dropzone-width} 0 calc(#{$dropzone-width} * 2);
+}
+
+.dnd-active {
+  opacity: 0.5;
 }
 
 .tag {
 
 }
 
+
+.modal-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+
+  background-color: rgba($color-light-gray, .3);
+
+  display: flex;
+  flex-flow: column;
+
+  justify-content: center;
+  align-items: center;
+}
+
+.modal {
+  display: grid;
+  grid-template: auto / 1fr;
+  grid-gap: 1.5rem;
+  grid-auto-flow: row;
+
+  z-index: 5;
+  padding: 2rem;
+  border: 1px solid $color-blue;
+
+  font-size: 2rem;
+  opacity: 1;
+
+  .modal-buttons {
+    display: grid;
+    grid-auto-flow: column;
+    grid-column-gap: 1rem;
+  }
+
+  .button {
+    border: 1px solid $color-gray;
+    padding: 1rem;
+    cursor: pointer;
+
+    &:hover,
+    &:active,
+    &:focus {
+      background-color: $color-gray;
+      color: $color-canvas;
+    }
+  }
+}

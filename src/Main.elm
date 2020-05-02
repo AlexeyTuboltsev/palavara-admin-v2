@@ -17,7 +17,7 @@ import Icons
 import List.Extra as LE exposing (find, findIndex, getAt, removeAt, setAt, setIf, splitAt, unique, updateAt)
 import Maybe.Extra as ME
 import Message exposing (Msg(..))
-import Page exposing (ItemViewData, Page(..), SectionPageData, TagViewData, UIData, View(..), addDragOver, generateMenuViewData, generatePageData, removeDragOver, sectionDataToSectionViewData, setActiveSection, startDnD, stopDnD)
+import Page exposing (ItemViewData, Modal(..), Page(..), SectionPageData, TagViewData, UIData, View(..), addDragOver, generateMenuViewData, generatePageData, removeDragOver, sectionDataToSectionViewData, setActiveSection, startDnD, stopDnD)
 import Result exposing (Result)
 import Task
 import Url exposing (Url)
@@ -127,10 +127,6 @@ update message model =
                         |> update GeneratePageData
 
                 DragEnd _ _ _ ->
-                    let
-                        _ =
-                            Debug.log "dragEnd"
-                    in
                     ReadyModel { readyModelData | uiData = readyModelData.uiData |> removeDragOver |> stopDnD }
                         |> update GeneratePageData
 
@@ -164,6 +160,7 @@ update message model =
                                                 let
                                                     filteredOrderList =
                                                         LE.remove sourceItemId itemOrderList
+
                                                     maybeTargetItemIndex =
                                                         Utils.findInsertionIndex filteredOrderList targetItemId dropTargetPosition
                                                 in
@@ -191,6 +188,94 @@ update message model =
                         Nothing ->
                             ( ReadyModel readyModelData, Cmd.none )
 
+                MoveItemLeft tagId itemId ->
+                    let
+                        fn =
+                            \itemIndex itemOrderList ->
+                                case itemIndex of
+                                    0 ->
+                                        itemOrderList
+
+                                    _ ->
+                                        LE.swapAt itemIndex (itemIndex - 1) itemOrderList
+
+                        maybeDataNext =
+                            updateItemList readyModelData.dataNext tagId itemId fn
+                    in
+                    case maybeDataNext of
+                        Just nd ->
+                            ReadyModel { readyModelData | dataNext = nd }
+                                |> update GeneratePageData
+
+                        Nothing ->
+                            ( ReadyModel readyModelData, Cmd.none )
+
+                MoveItemRight tagId itemId ->
+                    let
+                        fn =
+                            \itemIndex itemOrderList ->
+                                case itemIndex == (List.length itemOrderList - 1) of
+                                    True ->
+                                        itemOrderList
+
+                                    False ->
+                                        LE.swapAt itemIndex (itemIndex + 1) itemOrderList
+
+                        maybeDataNext =
+                            updateItemList readyModelData.dataNext tagId itemId fn
+                    in
+                    case maybeDataNext of
+                        Just nd ->
+                            ReadyModel { readyModelData | dataNext = nd }
+                                |> update GeneratePageData
+
+                        Nothing ->
+                            ( ReadyModel readyModelData, Cmd.none )
+
+                AskToDeleteItem tagId itemId ->
+                    let
+                        newUiData =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | modal = ConfirmDeleteItem tagId itemId })
+                    in
+                    ( ReadyModel { readyModelData | uiData = newUiData }, Cmd.none )
+
+                CancelDeleteItem ->
+                    let
+                        newUiData =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | modal = Closed })
+                    in
+                    ( ReadyModel { readyModelData | uiData = newUiData }, Cmd.none )
+
+                ConfirmDeleteItemFromTag tagId itemId ->
+                    let
+                        newUiData =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | modal = Closed })
+
+                        newModel =
+                            ReadyModel { readyModelData | uiData = newUiData }
+                    in
+                    update (DeleteItem tagId itemId) newModel
+
+                DeleteItem tagId itemId ->
+                    let
+                        fn =
+                            \itemIndex itemOrderList ->
+                                LE.removeAt itemIndex itemOrderList
+
+                        maybeDataNext =
+                            updateItemList readyModelData.dataNext tagId itemId fn
+                    in
+                    case maybeDataNext of
+                        Just nd ->
+                            ReadyModel { readyModelData | dataNext = nd }
+                                |> update GeneratePageData
+
+                        Nothing ->
+                            ( ReadyModel readyModelData, Cmd.none )
+
                 SetData result ->
                     case result of
                         Err err ->
@@ -212,7 +297,7 @@ allFieldsPresent newModel =
         InitModel data ->
             let
                 uiData =
-                    { view = Initial, imageUrl = data.imageUrl, dnd = Nothing, dragOver = Nothing }
+                    { view = Initial, imageUrl = data.imageUrl, dnd = Nothing, dragOver = Nothing, modal = Closed }
             in
             data.dataNext
                 |> Maybe.andThen
@@ -280,8 +365,8 @@ view model =
         InitErrorModel _ ->
             Browser.Document "** palavara **" [ text "error" ]
 
-        ReadyModel { page } ->
-            Browser.Document "** palavara **" <| contentPage page
+        ReadyModel { page, uiData } ->
+            Browser.Document "** palavara **" <| contentPage page uiData.modal
 
 
 initPage =
@@ -292,8 +377,8 @@ initPage =
     ]
 
 
-contentPage : Page -> List (Html Msg)
-contentPage page =
+contentPage : Page -> Modal -> List (Html Msg)
+contentPage page modalData =
     case page of
         InitialPage { sections } ->
             [ div [ class "layout" ]
@@ -310,7 +395,50 @@ contentPage page =
                     , div [ class "tags" ] (tagList tags)
                     ]
                 ]
+            , modal modalData
             ]
+
+
+modal modalData =
+    case modalData of
+        Page.Closed ->
+            Utils.emptyHtml
+
+        Page.ConfirmDeleteItem tagId itemId ->
+            modalBase
+                Nothing
+                (Just "Are you sure?")
+                [ { action = ConfirmDeleteItemFromTag tagId itemId, text = "delete" }, { action = CancelDeleteItem, text = "cancel" } ]
+
+
+modalBase : Maybe String -> Maybe String -> List { action : Msg, text : String } -> Html Msg
+modalBase maybeTitle maybeText buttons =
+    let
+        modalTitle =
+            Maybe.map (\titleText -> div [ class "modal-title" ] [ text titleText ]) maybeTitle
+                |> Maybe.withDefault Utils.emptyHtml
+
+        modalText =
+            Maybe.map (\txt -> div [ class "modal-text" ] [ text txt ]) maybeText
+                |> Maybe.withDefault Utils.emptyHtml
+
+        modalButtons =
+            List.map
+                (\buttonData ->
+                    div [ class "button", onClickPreventDefault buttonData.action ] [ text buttonData.text ]
+                )
+                buttons
+    in
+    div [ class "modal-wrapper" ]
+        [ div [ class "modal-background" ]
+            []
+        , div
+            [ class "modal" ]
+            [ modalTitle
+            , modalText
+            , div [ class "modal-buttons" ] modalButtons
+            ]
+        ]
 
 
 menu : List ( SectionId, String ) -> Html Msg
@@ -356,7 +484,15 @@ dropzoneItemList items tagId =
 dropzoneItemView itemData tagId =
     div (class ("item" ++ isDnD itemData) :: onSourceDrag { effectAllowed = { move = True, copy = False, link = False }, onStart = DragStart tagId itemData.itemId, onEnd = DragEnd tagId itemData.itemId, onDrag = Nothing })
         [ dropzoneLeft itemData tagId
-        , div [ class ("item-internal dnd" ++ isDnD itemData), id itemData.itemId ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+        , div [ class ("item-internal-wrapper" ++ isDnD itemData), id itemData.itemId ]
+            [ div [ class "item-internal" ]
+                [ div [ class "item-button upper-left", onClickPreventDefault <| MoveItemLeft tagId itemData.itemId ] [ text "<=" ]
+                , div [ class "item-button upper-right", onClickPreventDefault <| MoveItemRight tagId itemData.itemId ] [ text "=>" ]
+                , img [ src itemData.src, alt itemData.fileName ] []
+                , div [ class "item-button bottom-left", onClickPreventDefault <| EditItem itemData.itemId ] [ text "edit" ]
+                , div [ class "item-button bottom-right", onClickPreventDefault <| AskToDeleteItem tagId itemData.itemId ] [ text "delete" ]
+                ]
+            ]
         , dropzoneRight itemData tagId
         ]
 
@@ -411,7 +547,9 @@ itemList items =
 itemView itemData =
     div [ class "item" ]
         [ div [ class "item-dropzone-left" ] []
-        , div [ class "item-internal dnd" ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+        , div [ class "item-internal-wrapper" ]
+            [ div [ class "item-internal" ] [ img [ src itemData.src, alt itemData.fileName ] [] ]
+            ]
         , div [ class "item-dropzone-right" ] []
         ]
 
