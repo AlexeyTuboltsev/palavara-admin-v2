@@ -1,6 +1,6 @@
 module Page exposing (..)
 
-import AppData exposing (AppDataNext, DropTargetPosition(..), GalleryWithTagsSectionDataNext, ItemDataNext, ItemId, SectionDataNext(..), SectionId, TagData, TagDataNext, TagId)
+import AppData exposing (AppDataNext, DropTargetPosition(..), GalleryWithTagsSectionDataNext, ItemDataNext, ItemId, OrderListId, SectionDataNext(..), SectionId, TagData, TagDataNext, TagId)
 import Dict exposing (Dict)
 import Maybe.Extra as ME
 
@@ -10,16 +10,32 @@ type View
     | Section SectionId
 
 
-type Modal =
-    Closed
+type Modal
+    = ModalClosed
     | ConfirmDeleteItem TagId ItemId
+
+
+type alias ItemEditorData =
+    { itemId : ItemId
+    , fileName : Maybe String
+    , src: Maybe String
+    , urlString : Maybe String
+    , usedIn : List OrderListId
+    }
+
+
+type ItemEditor
+    = ItemEditorClosed
+    | ItemEditorOpen ItemEditorData
+
 
 type alias UIData =
     { view : View
     , imageUrl : String
     , dnd : Maybe ( TagId, ItemId )
     , dragOver : Maybe ( TagId, ItemId, DropTargetPosition )
-    , modal: Modal
+    , modal : Modal
+    , itemEditor : ItemEditor
     }
 
 
@@ -80,13 +96,12 @@ generateItemViewData items uiData itemId =
                                 Nothing
 
                     isDnD =
-                            (case uiData.dnd of
-                                Just ( _, id ) ->
-                                    id == itemId
+                        case uiData.dnd of
+                            Just ( _, id ) ->
+                                id == itemId
 
-                                Nothing ->
-                                    False
-                            )
+                            Nothing ->
+                                False
                 in
                 { itemId = itemId
                 , fileName = fileName

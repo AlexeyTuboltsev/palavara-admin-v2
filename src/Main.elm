@@ -6,7 +6,7 @@ import Browser.Dom exposing (Viewport, getViewport, getViewportOf)
 import Browser.Events exposing (onResize)
 import Browser.Navigation as Navigation exposing (Key, load)
 import Dict exposing (..)
-import Html exposing (Html, a, br, div, img, span, text)
+import Html exposing (Html, a, br, div, h2, img, span, text)
 import Html.Attributes exposing (alt, class, href, id, property, src, style)
 import Html.Events.Extra exposing (onClickPreventDefault)
 import Html.Events.Extra.Drag exposing (DropEffect(..), onDropTarget, onSourceDrag)
@@ -244,7 +244,7 @@ update message model =
                     let
                         newUiData =
                             readyModelData.uiData
-                                |> (\uiData -> { uiData | modal = Closed })
+                                |> (\uiData -> { uiData | modal = ModalClosed })
                     in
                     ( ReadyModel { readyModelData | uiData = newUiData }, Cmd.none )
 
@@ -252,7 +252,7 @@ update message model =
                     let
                         newUiData =
                             readyModelData.uiData
-                                |> (\uiData -> { uiData | modal = Closed })
+                                |> (\uiData -> { uiData | modal = ModalClosed })
 
                         newModel =
                             ReadyModel { readyModelData | uiData = newUiData }
@@ -276,6 +276,30 @@ update message model =
                         Nothing ->
                             ( ReadyModel readyModelData, Cmd.none )
 
+                EditItem itemId ->
+                    let
+                        itemEditorState =
+                            Dict.get itemId readyModelData.dataNext.items
+                                |> Maybe.map
+                                    (\itemData ->
+                                        { itemId = itemData.itemId
+                                        , fileName = Just itemData.fileName
+                                        , src = Just (readyModelData.uiData.imageUrl ++ itemData.fileName)
+                                        , urlString = Just itemData.urlString
+                                        , usedIn = itemData.usedIn
+                                        }
+                                    )
+                                |> Maybe.map Page.ItemEditorOpen
+                                |> Maybe.withDefault Page.ItemEditorClosed
+
+                        newModel =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | itemEditor = itemEditorState })
+                                |> (\newUiData -> { readyModelData | uiData = newUiData })
+                                |> ReadyModel
+                    in
+                    ( newModel, Cmd.none )
+
                 SetData result ->
                     case result of
                         Err err ->
@@ -297,7 +321,7 @@ allFieldsPresent newModel =
         InitModel data ->
             let
                 uiData =
-                    { view = Initial, imageUrl = data.imageUrl, dnd = Nothing, dragOver = Nothing, modal = Closed }
+                    { itemEditor = Page.ItemEditorClosed, view = Initial, imageUrl = data.imageUrl, dnd = Nothing, dragOver = Nothing, modal = ModalClosed }
             in
             data.dataNext
                 |> Maybe.andThen
@@ -366,7 +390,7 @@ view model =
             Browser.Document "** palavara **" [ text "error" ]
 
         ReadyModel { page, uiData } ->
-            Browser.Document "** palavara **" <| contentPage page uiData.modal
+            Browser.Document "** palavara **" <| contentPage page uiData.modal uiData.itemEditor
 
 
 initPage =
@@ -377,8 +401,8 @@ initPage =
     ]
 
 
-contentPage : Page -> Modal -> List (Html Msg)
-contentPage page modalData =
+contentPage : Page -> Modal -> Page.ItemEditor -> List (Html Msg)
+contentPage page modalData itemEditorData =
     case page of
         InitialPage { sections } ->
             [ div [ class "layout" ]
@@ -396,12 +420,40 @@ contentPage page modalData =
                     ]
                 ]
             , modal modalData
+            , itemEditor itemEditorData
             ]
+
+
+itemEditor data =
+    case data of
+        Page.ItemEditorClosed ->
+            Utils.emptyHtml
+
+        Page.ItemEditorOpen itemData ->
+            let
+                urlString =
+                    itemData.urlString
+                        |> Maybe.withDefault ""
+
+                imageSrc =
+                    itemData.src
+                        |> Maybe.withDefault ""
+            in
+            div [ class "item-editor-wrapper" ]
+                [ div [ class "item-editor" ]
+                    [ h2 [ class "item-editor-title" ] [ text "EDIT ITEM" ]
+                    , div [] [ text urlString ]
+                    , img [ class "item-editor-image", src imageSrc, alt urlString ] []
+                    , div [ class "modal-buttons" ] [
+                        div [ class "button" ] [ text "cancel" ]
+                    ]
+                    ]
+                ]
 
 
 modal modalData =
     case modalData of
-        Page.Closed ->
+        Page.ModalClosed ->
             Utils.emptyHtml
 
         Page.ConfirmDeleteItem tagId itemId ->
