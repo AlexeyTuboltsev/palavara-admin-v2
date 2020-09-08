@@ -312,7 +312,7 @@ update message model =
                     in
                     ( newModel, Cmd.none )
 
-                DeleteImage itemId ->
+                DeleteImage ->
                     let
                         itemEditorState =
                             readyModelData.uiData.itemEditor
@@ -324,6 +324,9 @@ update message model =
 
                                 Page.ItemEditorClosed ->
                                     Page.ItemEditorClosed
+
+                                Page.ItemEditorLoading data ->
+                                    Page.ItemEditorLoading data
 
                         newModel =
                             readyModelData.uiData
@@ -359,6 +362,9 @@ update message model =
                                 Page.ItemEditorClosed ->
                                     Page.ItemEditorClosed
 
+                                Page.ItemEditorLoading data ->
+                                    Page.ItemEditorLoading data
+
                         newModel =
                             readyModelData.uiData
                                 |> (\uiData -> { uiData | itemEditor = newItemEditorState })
@@ -366,6 +372,69 @@ update message model =
                                 |> ReadyModel
                     in
                     ( newModel, Cmd.none )
+
+                StartSaveingItem itemId ->
+                    --type alias ItemDataNext =
+                    --    { itemId : ItemId
+                    --    , fileName : String
+                    --    , urlString : String
+                    --    , usedIn : List OrderListId
+                    --    }
+                    --{ itemId : ItemId
+                    --    , fileName : Maybe String
+                    --    , src: Maybe String
+                    --    , urlString : Maybe String
+                    --    , usedIn : List OrderListId
+                    --    }
+                    let
+                        ( newItemEditorState, maybeNewData ) =
+                            case readyModelData.uiData.itemEditor of
+                                Page.ItemEditorOpen itemEditorData ->
+                                    let
+                                        maybeNewItemData =
+                                            Maybe.map2 (\fileName src -> ItemDataNext itemId fileName src itemEditorData.usedIn) itemEditorData.fileName itemEditorData.src
+
+                                        newItemDataValidationResult =
+                                            Result.fromMaybe "data is invalid" maybeNewItemData
+                                    in
+                                    case newItemDataValidationResult of
+                                        Ok data ->
+                                            ( Page.ItemEditorLoading itemEditorData, Just data )
+
+                                        Err _ ->
+                                            --TODO error state
+                                            ( Page.ItemEditorOpen itemEditorData, Nothing )
+
+                                Page.ItemEditorClosed ->
+                                    ( Page.ItemEditorClosed, Nothing )
+
+                                Page.ItemEditorLoading data ->
+                                    ( Page.ItemEditorLoading data, Nothing )
+
+                        newModel =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | itemEditor = newItemEditorState })
+                                |> (\newUiData -> { readyModelData | uiData = newUiData })
+                                |> ReadyModel
+
+                        cmd =
+                            case maybeNewData of
+                                Nothing ->
+                                    Cmd.none
+
+                                Just newData ->
+                                    Http.post
+                                        { url = "http://192.168.101.231:3061/item/" ++ newData.itemId
+                                        , body =
+                                            Http.multipartBody
+                                                [ Http.stringPart "itemId" newData.itemId
+                                                , Http.stringPart "file" newData.urlString
+                                                , Http.stringPart "fileName" newData.fileName
+                                                ]
+                                        , expect = Http.expectString HandleItemSaveResult
+                                        }
+                    in
+                    ( newModel, cmd )
 
                 SetData result ->
                     case result of
@@ -496,6 +565,24 @@ itemEditor data =
         Page.ItemEditorClosed ->
             Utils.emptyHtml
 
+        Page.ItemEditorLoading itemData ->
+            let
+                urlString =
+                    itemData.urlString
+                        |> Maybe.withDefault ""
+            in
+            div [ class "item-editor-wrapper" ]
+                [ div [ class "item-editor loading" ]
+                    [ h2 [ class "item-editor-title" ] [ text "EDIT ITEM" ]
+                    , div [] [ text urlString ]
+                    , itemEditorImage urlString itemData
+                    , div [ class "modal-buttons" ]
+                        [ div [ class "button", onClickPreventDefault CancelEditItem ] [ text "cancel" ]
+                        , div [ class "button" ] [ text "save" ]
+                        ]
+                    ]
+                ]
+
         Page.ItemEditorOpen itemData ->
             let
                 urlString =
@@ -509,6 +596,7 @@ itemEditor data =
                     , itemEditorImage urlString itemData
                     , div [ class "modal-buttons" ]
                         [ div [ class "button", onClickPreventDefault CancelEditItem ] [ text "cancel" ]
+                        , div [ class "button", onClickPreventDefault (StartSaveingItem itemData.itemId) ] [ text "save" ]
                         ]
                     ]
                 ]
@@ -519,7 +607,7 @@ itemEditorImage urlString itemData =
         Just imageSrc ->
             div [ class "item-editor-image-wrapper" ]
                 [ img [ class "item-editor-image", src imageSrc, alt urlString ] []
-                , div [ class "delete-image-button", onClickPreventDefault (DeleteImage itemData.itemId) ] [ text "x" ]
+                , div [ class "delete-image-button", onClickPreventDefault DeleteImage ] [ text "x" ]
                 ]
 
         Nothing ->

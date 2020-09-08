@@ -28,12 +28,14 @@ type Msg
     | MoveItemRight TagId ItemId
     | EditItem ItemId
     | CancelEditItem
+    | StartSaveingItem ItemId
+    | HandleItemSaveResult (Result Http.Error String)
     | DeleteItem TagId ItemId
     | AskToDeleteItem TagId ItemId
     | ConfirmDeleteItemFromTag TagId ItemId
     | ConfirmGlobalDeleteItem ItemId
     | CancelDeleteItem
-    | DeleteImage ItemId
+    | DeleteImage
     | AddImage (String, String)
     | ReadImage File
     | SelectImage

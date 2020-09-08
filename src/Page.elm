@@ -27,6 +27,7 @@ type alias ItemEditorData =
 type ItemEditor
     = ItemEditorClosed
     | ItemEditorOpen ItemEditorData
+    | ItemEditorLoading ItemEditorData
 
 
 type alias UIData =
