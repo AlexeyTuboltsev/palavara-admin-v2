@@ -324,8 +324,8 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
 
-  width: 70%;
-  height: 70%;
+  width: 70vw;
+  height: 70vh;
   padding: 2rem;
   background: $color-canvas;
   border: 1px solid $color-blue;
@@ -340,12 +340,36 @@ body {
   justify-items: center;
   align-content: center;
 
+}
 
-
+.item-editor-image-wrapper {
+  position: relative;
+  display: grid;
+  width: 100%;
 }
 
 .item-editor-image {
   height: 100%;
   width: 100%;
   object-fit: contain;
+}
+
+.item-editor-image-empty {
+  height: 100%;
+  width: 100%;
+  background-color: $color-light-gray;
+
+  cursor: pointer;
+}
+
+.delete-image-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px solid $color-blue;
+  cursor: pointer;
+}
+
+.item-editor-image-input{
+  display: none;
 }

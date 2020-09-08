@@ -3,6 +3,7 @@ module Message exposing (..)
 import AppData exposing (AppData, DropTargetPosition, ItemData, ItemId, SectionId, TagId)
 import Browser
 import Browser.Dom exposing (Viewport)
+import File exposing (File)
 import Html.Events.Extra.Drag as Drag exposing (Event)
 import Http
 import Json.Decode exposing (Value)
@@ -26,8 +27,13 @@ type Msg
     | MoveItemLeft TagId ItemId
     | MoveItemRight TagId ItemId
     | EditItem ItemId
+    | CancelEditItem
     | DeleteItem TagId ItemId
     | AskToDeleteItem TagId ItemId
     | ConfirmDeleteItemFromTag TagId ItemId
     | ConfirmGlobalDeleteItem ItemId
     | CancelDeleteItem
+    | DeleteImage ItemId
+    | AddImage (String, String)
+    | ReadImage File
+    | SelectImage

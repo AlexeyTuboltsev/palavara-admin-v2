@@ -6,9 +6,11 @@ import Browser.Dom exposing (Viewport, getViewport, getViewportOf)
 import Browser.Events exposing (onResize)
 import Browser.Navigation as Navigation exposing (Key, load)
 import Dict exposing (..)
-import Html exposing (Html, a, br, div, h2, img, span, text)
-import Html.Attributes exposing (alt, class, href, id, property, src, style)
-import Html.Events.Extra exposing (onClickPreventDefault)
+import File exposing (name, toUrl)
+import File.Select as Select
+import Html exposing (Html, a, br, div, h2, img, input, label, span, text)
+import Html.Attributes exposing (alt, class, for, href, id, property, src, style, type_)
+import Html.Events.Extra exposing (onChange, onClickPreventDefault)
 import Html.Events.Extra.Drag exposing (DropEffect(..), onDropTarget, onSourceDrag)
 import Html.Keyed exposing (node)
 import Html.Lazy exposing (lazy, lazy2, lazy3, lazy4)
@@ -300,6 +302,71 @@ update message model =
                     in
                     ( newModel, Cmd.none )
 
+                CancelEditItem ->
+                    let
+                        newModel =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | itemEditor = Page.ItemEditorClosed })
+                                |> (\newUiData -> { readyModelData | uiData = newUiData })
+                                |> ReadyModel
+                    in
+                    ( newModel, Cmd.none )
+
+                DeleteImage itemId ->
+                    let
+                        itemEditorState =
+                            readyModelData.uiData.itemEditor
+
+                        newItemEditorState =
+                            case itemEditorState of
+                                Page.ItemEditorOpen itemEditorData ->
+                                    Page.ItemEditorOpen { itemEditorData | src = Nothing, fileName = Nothing }
+
+                                Page.ItemEditorClosed ->
+                                    Page.ItemEditorClosed
+
+                        newModel =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | itemEditor = newItemEditorState })
+                                |> (\newUiData -> { readyModelData | uiData = newUiData })
+                                |> ReadyModel
+                    in
+                    ( newModel, Cmd.none )
+
+                SelectImage ->
+                    ( model, Select.file [ "image/jpeg" ] ReadImage )
+
+                ReadImage file ->
+                    let
+                        imgFile =
+                            name file
+
+                        task =
+                            Task.map (\url -> ( url, imgFile )) (toUrl file)
+                    in
+                    ( model, Task.perform AddImage task )
+
+                AddImage ( imgUrl, imgName ) ->
+                    let
+                        itemEditorState =
+                            readyModelData.uiData.itemEditor
+
+                        newItemEditorState =
+                            case itemEditorState of
+                                Page.ItemEditorOpen itemEditorData ->
+                                    Page.ItemEditorOpen { itemEditorData | src = Just imgUrl, fileName = Just imgName }
+
+                                Page.ItemEditorClosed ->
+                                    Page.ItemEditorClosed
+
+                        newModel =
+                            readyModelData.uiData
+                                |> (\uiData -> { uiData | itemEditor = newItemEditorState })
+                                |> (\newUiData -> { readyModelData | uiData = newUiData })
+                                |> ReadyModel
+                    in
+                    ( newModel, Cmd.none )
+
                 SetData result ->
                     case result of
                         Err err ->
@@ -434,20 +501,32 @@ itemEditor data =
                 urlString =
                     itemData.urlString
                         |> Maybe.withDefault ""
-
-                imageSrc =
-                    itemData.src
-                        |> Maybe.withDefault ""
             in
             div [ class "item-editor-wrapper" ]
                 [ div [ class "item-editor" ]
                     [ h2 [ class "item-editor-title" ] [ text "EDIT ITEM" ]
                     , div [] [ text urlString ]
-                    , img [ class "item-editor-image", src imageSrc, alt urlString ] []
-                    , div [ class "modal-buttons" ] [
-                        div [ class "button" ] [ text "cancel" ]
+                    , itemEditorImage urlString itemData
+                    , div [ class "modal-buttons" ]
+                        [ div [ class "button", onClickPreventDefault CancelEditItem ] [ text "cancel" ]
+                        ]
                     ]
-                    ]
+                ]
+
+
+itemEditorImage urlString itemData =
+    case itemData.src of
+        Just imageSrc ->
+            div [ class "item-editor-image-wrapper" ]
+                [ img [ class "item-editor-image", src imageSrc, alt urlString ] []
+                , div [ class "delete-image-button", onClickPreventDefault (DeleteImage itemData.itemId) ] [ text "x" ]
+                ]
+
+        Nothing ->
+            div [ class "item-editor-image-wrapper" ]
+                [ div [ for "file-upload", class "item-editor-image-empty", onClickPreventDefault SelectImage ] []
+
+                --, input [id "file-upload", class "item-editor-image-input", type_ "file", onChange AddImage] []
                 ]
 
 
