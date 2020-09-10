@@ -1,9 +1,10 @@
-module Utils exposing (insert,move, split, find, findIndex,positionIsEqual, convertData, findInsertionIndex, emptyHtml)
+module Utils exposing (chainedUpdate,insert,move, split, find, findIndex,positionIsEqual, convertData, findInsertionIndex, emptyHtml)
 
-import AppData exposing (AppData, AppDataNext, DropTargetPosition(..), SectionData(..), SectionDataNext(..))
+import Types exposing (AppData, AppDataNext, DropTargetPosition(..), SectionData(..), SectionDataNext(..))
 import Dict
 import Html
 import List.Extra as LE
+import Types exposing (SectionDataNext(..))
 
 insert targetIndex list item =
     case targetIndex of
@@ -112,7 +113,7 @@ convertData data =
                             sectionData.sectionId ++ "_tags"
 
                         sectionItems =
-                            List.map (\{ itemId, fileName, urlString } -> ( itemId, AppData.ItemDataNext itemId fileName urlString [ itemOrderId ] )) sectionData.items
+                            List.map (\{ itemId, fileName, urlString } -> ( itemId, Types.ItemDataNext itemId fileName urlString [ itemOrderId ] )) sectionData.items
                                 |> Dict.fromList
 
                         sectionItemOrder =
@@ -120,7 +121,7 @@ convertData data =
                                 |> Dict.fromList
 
                         sectionTags =
-                            List.map (\{ tagId, label, items } -> ( tagId, AppData.TagDataNext tagId label (itemOrderId ++ "_" ++ tagId) [ tagOrderId ] )) sectionData.tags
+                            List.map (\{ tagId, label, items } -> ( tagId, Types.TagDataNext tagId label (itemOrderId ++ "_" ++ tagId) [ tagOrderId ] )) sectionData.tags
                                 |> Dict.fromList
 
                         sectionTagOrder =
@@ -187,3 +188,13 @@ convertData data =
 
 emptyHtml =
     Html.text ""
+
+chainedUpdate update model msgs =
+    chainedUpdateHelper update (model,Cmd.none) msgs
+
+chainedUpdateHelper update m msgs =
+    let (model, cmd) = m
+    in case msgs of
+        msg :: restMsgs ->
+           chainedUpdateHelper update (update msg model) restMsgs
+        _-> m

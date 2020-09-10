@@ -2,65 +2,28 @@ module Main exposing (..)
 
 import AppData exposing (..)
 import Browser
-import Browser.Dom exposing (Viewport, getViewport, getViewportOf)
+import Browser.Dom exposing (Viewport, getViewport)
 import Browser.Events exposing (onResize)
-import Browser.Navigation as Navigation exposing (Key, load)
+import Browser.Navigation as Navigation exposing (Key)
 import Dict exposing (..)
 import File exposing (name, toUrl)
 import File.Select as Select
-import Html exposing (Html, a, br, div, h2, img, input, label, span, text)
-import Html.Attributes exposing (alt, class, for, href, id, property, src, style, type_)
+import Html exposing (Html,  div, h2, img, label, text)
+import Html.Attributes exposing (alt, class, for, id, src)
 import Html.Events.Extra exposing (onChange, onClickPreventDefault)
 import Html.Events.Extra.Drag exposing (DropEffect(..), onDropTarget, onSourceDrag)
 import Html.Keyed exposing (node)
-import Html.Lazy exposing (lazy, lazy2, lazy3, lazy4)
-import Http exposing (expectJson, get)
+import Html.Lazy exposing (lazy, lazy2)
+import Http exposing (expectJson)
 import Icons
-import List.Extra as LE exposing (find, findIndex, getAt, removeAt, setAt, setIf, splitAt, unique, updateAt)
-import Maybe.Extra as ME
-import Message exposing (Msg(..))
-import Page exposing (ItemViewData, Modal(..), Page(..), SectionPageData, TagViewData, UIData, View(..), addDragOver, generateMenuViewData, generatePageData, removeDragOver, sectionDataToSectionViewData, setActiveSection, startDnD, stopDnD)
+import Json.Encode as JE
+import List.Extra as LE
+import Types exposing (DropTargetPosition(..), Flags, ItemEditor(..), Modal(..), Model(..), Msg(..), Page(..), ReadyModelData, SectionId, TagViewData, View(..))
+import Page exposing (addDragOver, generateMenuViewData, generatePageData, removeDragOver, sectionDataToSectionViewData, setActiveSection, startDnD, stopDnD)
 import Result exposing (Result)
 import Task
 import Url exposing (Url)
-import Utils exposing (convertData, find, findIndex, insert, move, positionIsEqual)
-
-
-type alias Flags =
-    { apiBaseUrl : String
-    , apiProtocol : String
-    , apiPort : String
-    , dataPath : String
-    , imagePath : String
-    }
-
-
-type alias ReadyModelData =
-    { key : Navigation.Key
-    , apiUrl : String
-    , page : Page
-    , data : AppData
-    , tempData : Maybe AppData
-    , dataNext : AppDataNext
-    , dnd : Maybe ( TagId, ItemId )
-    , uiData : UIData
-    }
-
-
-type alias InitModelData =
-    { url : Url
-    , imageUrl : String
-    , key : Navigation.Key
-    , data : Maybe AppData
-    , dataNext : Maybe AppDataNext
-    }
-
-
-type Model
-    = ReadyModel ReadyModelData
-    | InitModel InitModelData
-    | InitErrorModel Http.Error
-
+import Utils exposing (chainedUpdate, convertData, move, positionIsEqual)
 
 
 -- UPDATE --
@@ -291,8 +254,8 @@ update message model =
                                         , usedIn = itemData.usedIn
                                         }
                                     )
-                                |> Maybe.map Page.ItemEditorOpen
-                                |> Maybe.withDefault Page.ItemEditorClosed
+                                |> Maybe.map ItemEditorOpen
+                                |> Maybe.withDefault ItemEditorClosed
 
                         newModel =
                             readyModelData.uiData
@@ -306,7 +269,7 @@ update message model =
                     let
                         newModel =
                             readyModelData.uiData
-                                |> (\uiData -> { uiData | itemEditor = Page.ItemEditorClosed })
+                                |> (\uiData -> { uiData | itemEditor = ItemEditorClosed })
                                 |> (\newUiData -> { readyModelData | uiData = newUiData })
                                 |> ReadyModel
                     in
@@ -319,14 +282,14 @@ update message model =
 
                         newItemEditorState =
                             case itemEditorState of
-                                Page.ItemEditorOpen itemEditorData ->
-                                    Page.ItemEditorOpen { itemEditorData | src = Nothing, fileName = Nothing }
+                                ItemEditorOpen itemEditorData ->
+                                    ItemEditorOpen { itemEditorData | src = Nothing, fileName = Nothing }
 
-                                Page.ItemEditorClosed ->
-                                    Page.ItemEditorClosed
+                                ItemEditorClosed ->
+                                    ItemEditorClosed
 
-                                Page.ItemEditorLoading data ->
-                                    Page.ItemEditorLoading data
+                                ItemEditorLoading data ->
+                                    ItemEditorLoading data
 
                         newModel =
                             readyModelData.uiData
@@ -356,14 +319,14 @@ update message model =
 
                         newItemEditorState =
                             case itemEditorState of
-                                Page.ItemEditorOpen itemEditorData ->
-                                    Page.ItemEditorOpen { itemEditorData | src = Just imgUrl, fileName = Just imgName }
+                                ItemEditorOpen itemEditorData ->
+                                    ItemEditorOpen { itemEditorData | src = Just imgUrl, fileName = Just imgName }
 
-                                Page.ItemEditorClosed ->
-                                    Page.ItemEditorClosed
+                                ItemEditorClosed ->
+                                    ItemEditorClosed
 
-                                Page.ItemEditorLoading data ->
-                                    Page.ItemEditorLoading data
+                                ItemEditorLoading data ->
+                                    ItemEditorLoading data
 
                         newModel =
                             readyModelData.uiData
@@ -373,43 +336,31 @@ update message model =
                     in
                     ( newModel, Cmd.none )
 
-                StartSaveingItem itemId ->
-                    --type alias ItemDataNext =
-                    --    { itemId : ItemId
-                    --    , fileName : String
-                    --    , urlString : String
-                    --    , usedIn : List OrderListId
-                    --    }
-                    --{ itemId : ItemId
-                    --    , fileName : Maybe String
-                    --    , src: Maybe String
-                    --    , urlString : Maybe String
-                    --    , usedIn : List OrderListId
-                    --    }
+                StartSavingItem itemId ->
                     let
                         ( newItemEditorState, maybeNewData ) =
                             case readyModelData.uiData.itemEditor of
-                                Page.ItemEditorOpen itemEditorData ->
+                                ItemEditorOpen itemEditorData ->
                                     let
                                         maybeNewItemData =
-                                            Maybe.map2 (\fileName src -> ItemDataNext itemId fileName src itemEditorData.usedIn) itemEditorData.fileName itemEditorData.src
+                                            Maybe.map2 (\fileName src -> Types.ItemDataNext itemId fileName src itemEditorData.usedIn) itemEditorData.fileName itemEditorData.src
 
                                         newItemDataValidationResult =
                                             Result.fromMaybe "data is invalid" maybeNewItemData
                                     in
                                     case newItemDataValidationResult of
                                         Ok data ->
-                                            ( Page.ItemEditorLoading itemEditorData, Just data )
+                                            ( ItemEditorLoading itemEditorData, Just data )
 
                                         Err _ ->
                                             --TODO error state
-                                            ( Page.ItemEditorOpen itemEditorData, Nothing )
+                                            ( ItemEditorOpen itemEditorData, Nothing )
 
-                                Page.ItemEditorClosed ->
-                                    ( Page.ItemEditorClosed, Nothing )
+                                ItemEditorClosed ->
+                                    ( ItemEditorClosed, Nothing )
 
-                                Page.ItemEditorLoading data ->
-                                    ( Page.ItemEditorLoading data, Nothing )
+                                ItemEditorLoading data ->
+                                    ( ItemEditorLoading data, Nothing )
 
                         newModel =
                             readyModelData.uiData
@@ -423,18 +374,50 @@ update message model =
                                     Cmd.none
 
                                 Just newData ->
-                                    Http.post
-                                        { url = "http://192.168.101.231:3061/item/" ++ newData.itemId
+                                    Http.request
+                                        { method = "PUT"
+                                        , headers =
+                                            []
+                                        , url = readyModelData.apiUrl
                                         , body =
-                                            Http.multipartBody
-                                                [ Http.stringPart "itemId" newData.itemId
-                                                , Http.stringPart "file" newData.urlString
-                                                , Http.stringPart "fileName" newData.fileName
-                                                ]
-                                        , expect = Http.expectString HandleItemSaveResult
+                                            Http.jsonBody
+                                                (JE.object
+                                                    [ ( "itemId", JE.string newData.itemId )
+                                                    , ( "file", JE.string newData.urlString )
+                                                    ]
+                                                )
+                                        , expect = Http.expectJson HandleSaveItemResult saveImageDecoder
+                                        , timeout = Nothing
+                                        , tracker = Nothing
                                         }
                     in
                     ( newModel, cmd )
+
+                HandleSaveItemResult result ->
+                    case result of
+                        Err errMessage ->
+                            --TODO ignore error for now
+                            update CancelEditItem model
+
+                        Ok { itemId, fileName } ->
+                            let
+                                maybeNewModel =
+                                    Dict.get itemId readyModelData.dataNext.items
+                                        |> Maybe.map (\{ usedIn, urlString } -> Types.ItemDataNext itemId fileName urlString usedIn)
+                                        |> Maybe.map (\newItemNext -> Dict.insert itemId newItemNext readyModelData.dataNext.items)
+                                        |> Maybe.map
+                                            (\newItems ->
+                                                readyModelData.dataNext |> (\dn -> { dn | items = newItems })
+                                            )
+                                        |> Maybe.map (\newData -> { readyModelData | dataNext = newData })
+                                        |> Maybe.map (\newModel -> ReadyModel newModel)
+                            in
+                            case maybeNewModel of
+                                Nothing ->
+                                    update CancelEditItem model
+
+                                Just newModel ->
+                                    chainedUpdate update newModel [GeneratePageData,CancelEditItem]
 
                 SetData result ->
                     case result of
@@ -447,6 +430,8 @@ update message model =
                 UrlChanged url ->
                     ( ReadyModel readyModelData, Cmd.none )
 
+                ChainUpdates nm msgs ->
+                    chainedUpdate update nm msgs
                 _ ->
                     ( model, Cmd.none )
 
@@ -457,15 +442,15 @@ allFieldsPresent newModel =
         InitModel data ->
             let
                 uiData =
-                    { itemEditor = Page.ItemEditorClosed, view = Initial, imageUrl = data.imageUrl, dnd = Nothing, dragOver = Nothing, modal = ModalClosed }
+                    { itemEditor = ItemEditorClosed, view = Initial, imageUrl = data.imageUrl, dnd = Nothing, dragOver = Nothing, modal = ModalClosed }
             in
             data.dataNext
                 |> Maybe.andThen
                     (\d -> generateMenuViewData d uiData sectionDataToSectionViewData)
                 |> Maybe.map
-                    (\sections -> Page.InitialPageData sections)
+                    (\sections -> Types.InitialPageData sections)
                 |> Maybe.map (\s -> InitialPage s)
-                |> Maybe.map3 (\d dn page -> { uiData = uiData, data = d, tempData = Nothing, apiUrl = data.imageUrl, key = data.key, page = page, dnd = Nothing, dataNext = dn }) data.data data.dataNext
+                |> Maybe.map2 (\dn page -> { uiData = uiData, tempData = Nothing, apiUrl = data.imageUrl, key = data.key, page = page, dnd = Nothing, dataNext = dn }) data.dataNext
 
         _ ->
             Nothing
@@ -496,7 +481,7 @@ init { apiBaseUrl, dataPath, imagePath, apiPort, apiProtocol } url key =
                 ++ apiPort
                 ++ "/"
     in
-    ( InitModel (InitModelData url (baseUrl ++ imagePath ++ "/") key Nothing Nothing)
+    ( InitModel (Types.InitModelData url (baseUrl ++ imagePath ++ "/") key Nothing Nothing)
     , Cmd.batch
         [ Http.get
             { url = baseUrl ++ dataPath
@@ -537,7 +522,7 @@ initPage =
     ]
 
 
-contentPage : Page -> Modal -> Page.ItemEditor -> List (Html Msg)
+contentPage : Page -> Modal -> ItemEditor -> List (Html Msg)
 contentPage page modalData itemEditorData =
     case page of
         InitialPage { sections } ->
@@ -562,10 +547,10 @@ contentPage page modalData itemEditorData =
 
 itemEditor data =
     case data of
-        Page.ItemEditorClosed ->
+        ItemEditorClosed ->
             Utils.emptyHtml
 
-        Page.ItemEditorLoading itemData ->
+        ItemEditorLoading itemData ->
             let
                 urlString =
                     itemData.urlString
@@ -583,7 +568,7 @@ itemEditor data =
                     ]
                 ]
 
-        Page.ItemEditorOpen itemData ->
+        ItemEditorOpen itemData ->
             let
                 urlString =
                     itemData.urlString
@@ -596,7 +581,7 @@ itemEditor data =
                     , itemEditorImage urlString itemData
                     , div [ class "modal-buttons" ]
                         [ div [ class "button", onClickPreventDefault CancelEditItem ] [ text "cancel" ]
-                        , div [ class "button", onClickPreventDefault (StartSaveingItem itemData.itemId) ] [ text "save" ]
+                        , div [ class "button", onClickPreventDefault (StartSavingItem itemData.itemId) ] [ text "save" ]
                         ]
                     ]
                 ]
@@ -620,10 +605,10 @@ itemEditorImage urlString itemData =
 
 modal modalData =
     case modalData of
-        Page.ModalClosed ->
+        ModalClosed ->
             Utils.emptyHtml
 
-        Page.ConfirmDeleteItem tagId itemId ->
+        ConfirmDeleteItem tagId itemId ->
             modalBase
                 Nothing
                 (Just "Are you sure?")

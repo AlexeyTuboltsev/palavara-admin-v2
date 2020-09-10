@@ -4,129 +4,18 @@ import Dict exposing (Dict)
 import Json.Decode as JD
 import Json.Encode as JE
 import List.Extra as LE
+import Types exposing (AppDataNext, ItemData, OrderListId, SaveImageResponse, SectionData(..), TagData)
 
 
-type alias SectionId =
-    String
+
+--JSON --
 
 
-type alias TagId =
-    String
-
-
-type alias ItemId =
-    String
-
-
-type alias TagData =
-    { label : String
-    , tagId : TagId
-    , items : List ItemData
-    }
-
-
-type alias ItemData =
-    { itemId : ItemId
-    , fileName : String
-    , urlString : String
-    }
-
-
-type SectionData
-    = GalleryWithTagsSectionType GalleryWithTagsSectionData
-    | GallerySectionType GallerySectionData
-    | InfoSectionType InfoSectionData
-
-
-type alias GalleryWithTagsSectionData =
-    { label : String
-    , sectionId : SectionId
-    , items : List ItemData
-    , tags : List TagData
-    }
-
-
-type alias InfoSectionData =
-    { label : String
-    , sectionId : SectionId
-    , text : String
-    , imageId : String
-    }
-
-
-type alias GallerySectionData =
-    { label : String
-    , sectionId : SectionId
-    }
-
-
-type alias AppData =
-    List SectionData
-
-
-type alias OrderListId =
-    String
-
-
-type alias ItemDataNext =
-    { itemId : ItemId
-    , fileName : String
-    , urlString : String
-    , usedIn : List OrderListId
-    }
-
-
-type alias TagDataNext =
-    { tagId : TagId
-    , label : String
-    , itemOrderId : OrderListId
-    , usedIn : List OrderListId
-    }
-
-
-type alias GalleryWithTagsSectionDataNext =
-    { sectionId : SectionId
-    , label : String
-    , tagOrderId : OrderListId
-    , itemOrderId : OrderListId
-    , usedIn : List OrderListId
-    }
-
-
-type alias GallerySectionDataNext =
-    { sectionId : String
-    , label : String
-    }
-
-
-type alias InfoSectionDataNext =
-    { sectionId : String
-    , label : String
-    , text : String
-    , imageId : String
-    }
-
-
-type SectionDataNext
-    = GalleryWithTagsSectionNext GalleryWithTagsSectionDataNext
-    | GallerySectionNext GallerySectionDataNext
-    | InfoSectionNext InfoSectionDataNext
-
-
-type alias AppDataNext =
-    { sections : Dict SectionId SectionDataNext
-    , orderLists : Dict OrderListId (List String)
-    , tags : Dict String TagDataNext
-    , items : Dict ItemId ItemDataNext
-    }
-
-
-type DropTargetPosition
-    = Before
-    | After
-
-
--- JSON --
+saveImageDecoder : JD.Decoder SaveImageResponse
+saveImageDecoder =
+    JD.map2 SaveImageResponse
+        (JD.field "itemId" JD.string)
+        (JD.field "fileName" JD.string)
 
 
 appDataDecoder : JD.Decoder (List SectionData)
@@ -161,7 +50,7 @@ sectionDataDecoder =
             (\sectionType ->
                 case sectionType of
                     "galleryWithTags" ->
-                        JD.map4 GalleryWithTagsSectionData
+                        JD.map4 Types.GalleryWithTagsSectionData
                             (JD.field "label" JD.string)
                             (JD.field "sectionId" JD.string)
                             (JD.field "items" itemsDecoder)
@@ -169,13 +58,13 @@ sectionDataDecoder =
                             |> JD.map GalleryWithTagsSectionType
 
                     "gallery" ->
-                        JD.map2 GallerySectionData
+                        JD.map2 Types.GallerySectionData
                             (JD.field "label" JD.string)
                             (JD.field "sectionId" JD.string)
                             |> JD.map GallerySectionType
 
                     "info" ->
-                        JD.map4 InfoSectionData
+                        JD.map4 Types.InfoSectionData
                             (JD.field "label" JD.string)
                             (JD.field "sectionId" JD.string)
                             (JD.field "text" JD.string)
@@ -186,7 +75,11 @@ sectionDataDecoder =
                         JD.fail "no luck today"
             )
 
+
+
 ----- Encoders ---------------
+
+
 encodeAppData appData =
     JE.list sectionEncoder appData
 
@@ -225,18 +118,23 @@ itemEncoder item =
         ]
 
 
+
 -- updates
-setItemOrderList: AppDataNext -> Maybe (List String) -> Maybe OrderListId -> Maybe AppDataNext
+
+
+setItemOrderList : AppDataNext -> Maybe (List String) -> Maybe OrderListId -> Maybe AppDataNext
 setItemOrderList dataNext maybeNewItemOrderList maybeItemOrderListId =
     Maybe.map2
         (\itemOrderListId newItemOrderList ->
             Dict.update itemOrderListId (\_ -> Just newItemOrderList) dataNext.orderLists
         )
-        maybeItemOrderListId maybeNewItemOrderList
-    |> Maybe.map
-        (\orderLists ->
-            { dataNext | orderLists = orderLists }
-        )
+        maybeItemOrderListId
+        maybeNewItemOrderList
+        |> Maybe.map
+            (\orderLists ->
+                { dataNext | orderLists = orderLists }
+            )
+
 
 updateItemList dataNext tagId itemId fn =
     let
@@ -250,10 +148,12 @@ updateItemList dataNext tagId itemId fn =
 
         maybeItemIndex =
             maybeItemOrderList
-                |> Maybe.andThen (\itemOrderList -> LE.findIndex (\i -> i == itemId ) itemOrderList)
+                |> Maybe.andThen (\itemOrderList -> LE.findIndex (\i -> i == itemId) itemOrderList)
 
-        maybeNewItemOrderList = Maybe.map2
-            fn maybeItemIndex maybeItemOrderList
-
+        maybeNewItemOrderList =
+            Maybe.map2
+                fn
+                maybeItemIndex
+                maybeItemOrderList
     in
-        setItemOrderList dataNext maybeNewItemOrderList maybeItemOrderListId
+    setItemOrderList dataNext maybeNewItemOrderList maybeItemOrderListId

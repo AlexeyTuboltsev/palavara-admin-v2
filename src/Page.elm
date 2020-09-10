@@ -1,80 +1,8 @@
 module Page exposing (..)
 
-import AppData exposing (AppDataNext, DropTargetPosition(..), GalleryWithTagsSectionDataNext, ItemDataNext, ItemId, OrderListId, SectionDataNext(..), SectionId, TagData, TagDataNext, TagId)
+import Types exposing (AppDataNext, DropTargetPosition(..), GalleryWithTagsSectionDataNext, ItemDataNext, ItemId, ItemViewData, OrderListId, Page(..), SectionDataNext(..), SectionId, TagData, TagDataNext, TagId, TagViewData, UIData, View(..))
 import Dict exposing (Dict)
 import Maybe.Extra as ME
-
-
-type View
-    = Initial
-    | Section SectionId
-
-
-type Modal
-    = ModalClosed
-    | ConfirmDeleteItem TagId ItemId
-
-
-type alias ItemEditorData =
-    { itemId : ItemId
-    , fileName : Maybe String
-    , src: Maybe String
-    , urlString : Maybe String
-    , usedIn : List OrderListId
-    }
-
-
-type ItemEditor
-    = ItemEditorClosed
-    | ItemEditorOpen ItemEditorData
-    | ItemEditorLoading ItemEditorData
-
-
-type alias UIData =
-    { view : View
-    , imageUrl : String
-    , dnd : Maybe ( TagId, ItemId )
-    , dragOver : Maybe ( TagId, ItemId, DropTargetPosition )
-    , modal : Modal
-    , itemEditor : ItemEditor
-    }
-
-
-type Page
-    = SectionPage SectionPageData
-    | InitialPage InitialPageData
-
-
-type alias InitialPageData =
-    { sections : List ( SectionId, String )
-    }
-
-
-type alias SectionPageData =
-    { sections : List ( SectionId, String )
-    , activeSectionId : SectionId
-    , tags : List TagViewData
-    , items : List ItemViewData
-    , dnd : Maybe ( TagId, ItemId )
-    , dragOver : Maybe ( TagId, ItemId, DropTargetPosition )
-    }
-
-
-type alias ItemViewData =
-    { itemId : ItemId
-    , fileName : String
-    , urlString : String
-    , src : String
-    , isDnD : Bool
-    , dndOnOver : Maybe DropTargetPosition
-    }
-
-
-type alias TagViewData =
-    { label : String
-    , tagId : TagId
-    , items : List ItemViewData
-    }
 
 
 generateItemViewData : Dict ItemId ItemDataNext -> UIData -> ItemId -> Maybe ItemViewData
@@ -83,6 +11,7 @@ generateItemViewData items uiData itemId =
         |> Maybe.map
             (\{ fileName, urlString } ->
                 let
+                    _ = Debug.log "fileName" (uiData.imageUrl ++ fileName)
                     maybeDragOver =
                         case uiData.dragOver of
                             Just ( _, id, position ) ->
